@@ -1,0 +1,46 @@
+
+# requirements.txt
+# ============================================================================
+# Core dependencies
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# Database
+sqlalchemy
+psycopg2-binary
+pymongo
+alembic
+
+# Authentication & Security
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+cryptography
+
+# Email
+sendgrid
+
+# HTTP & External APIs
+httpx
+requests
+google-api-python-client
+
+# Cloudinary (optional, for image uploads)
+cloudinary
+# Utilities
+python-dotenv
+pydantic-extra-types
+
+# Logging & Monitoring
+python-json-logger
+
+# Development dependencies (optional)
+pytest
+pytest-asyncio
+pytest-cov
+black
+flake8
+isort
+mypy
