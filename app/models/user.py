@@ -69,9 +69,8 @@ class User(Base):
     courses = relationship("Course", back_populates="instructor", foreign_keys="Course.instructor_id")
     enrollments = relationship("Enrollment", back_populates="user", cascade="all, delete-orphan")
     progress = relationship("UserProgress", back_populates="user", cascade="all, delete-orphan")
-    badges = relationship("Badge", secondary="user_badges", back_populates="users")
-    forum_threads = relationship("ForumThread", back_populates="user", cascade="all, delete-orphan")
-    forum_replies = relationship("ForumReply", back_populates="user", cascade="all, delete-orphan")
+    streak = relationship("Streak", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    badge_awards = relationship("BadgeAward", back_populates="user", cascade="all, delete-orphan")
     
     # === INDEXES ===
     __table_args__ = (

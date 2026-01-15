@@ -23,6 +23,7 @@ from app.dependencies import (
     get_admin_user,
     ValidationError,
 )
+from app.security import create_access_token, create_refresh_token
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -66,12 +67,12 @@ async def register(
         )
         
         # Create tokens
-        access_token = AuthService.create_access_token(
+        access_token = create_access_token(
             user_id=str(user.id),
             email=user.email,
             role=user.role.value,
         )
-        refresh_token = AuthService.create_refresh_token(
+        refresh_token = create_refresh_token(
             user_id=str(user.id),
             email=user.email,
         )

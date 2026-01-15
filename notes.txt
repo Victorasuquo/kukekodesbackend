@@ -1,0 +1,23 @@
+Course _id: 51f83fb2-3a46-4c96-b778-5176930441f9
+
+	
+Response body
+Download
+
+  "id": "27a63e78-4cda-459a-8688-054c01bcbd93",
+  "course_id": "51f83fb2-3a46-4c96-b778-5176930441f9",
+
+
+  {
+  "id": "98c5a25d-c7ea-4430-b3e5-4da623f39847",
+  "module_id": "27a63e78-4cda-459a-8688-054c01bcbd93",
+  "title": "Understanding Python Variables",
+  "description": "Deep dive into Python variables and naming conventions",
+  "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "youtube_video_id": "dQw4w9WgXcQ",
+  "duration_minutes": null,
+  "thumbnail_url": "https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
+  "order": 1,
+  "status": "draft",
+  "created_at": "2026-01-15T18:09:59.722105"
+}

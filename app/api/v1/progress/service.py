@@ -10,9 +10,9 @@ from datetime import datetime, timedelta
 import logging
 
 from app.models.course import Course, Module, Lesson
-from app.models.enrollment import Enrollment, UserProgress, Streak
+from app.models.enrollment import Enrollment, UserProgress
+from app.models.progress import Streak
 from app.models.user import User
-from app.models.badge import Badge, user_badges
 from app.models.notification import Notification, NotificationType, NotificationPreference
 from app.services.email_service import email_service
 from app.db.mongodb import insert_activity

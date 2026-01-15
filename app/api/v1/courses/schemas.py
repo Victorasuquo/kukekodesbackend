@@ -1,0 +1,56 @@
+"""
+Re-export course schemas from app.schemas.course for API v1.
+This file acts as a convenience import point for the courses module.
+"""
+
+from app.schemas.course import (
+    SkillLevelEnum,
+    CourseStatusEnum,
+    LessonStatusEnum,
+    LessonCreateRequest,
+    LessonUpdateRequest,
+    LessonResponse,
+    LessonDetailResponse,
+    ModuleCreateRequest,
+    ModuleUpdateRequest,
+    ModuleResponse,
+    CourseCreateRequest,
+    CourseUpdateRequest,
+    CourseResponse,
+    CourseDetailResponse,
+    CoursePreviewResponse,
+    CoursePublishRequest,
+    CoursePublishResponse,
+    ReorderModulesRequest,
+    ReorderLessonsRequest,
+    PaginationMeta,
+    CourseListResponse,
+    ModuleListResponse,
+    LessonListResponse,
+)
+
+__all__ = [
+    "SkillLevelEnum",
+    "CourseStatusEnum",
+    "LessonStatusEnum",
+    "LessonCreateRequest",
+    "LessonUpdateRequest",
+    "LessonResponse",
+    "LessonDetailResponse",
+    "ModuleCreateRequest",
+    "ModuleUpdateRequest",
+    "ModuleResponse",
+    "CourseCreateRequest",
+    "CourseUpdateRequest",
+    "CourseResponse",
+    "CourseDetailResponse",
+    "CoursePreviewResponse",
+    "CoursePublishRequest",
+    "CoursePublishResponse",
+    "ReorderModulesRequest",
+    "ReorderLessonsRequest",
+    "PaginationMeta",
+    "CourseListResponse",
+    "ModuleListResponse",
+    "LessonListResponse",
+]

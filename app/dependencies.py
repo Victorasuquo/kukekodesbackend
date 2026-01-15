@@ -23,9 +23,8 @@ logger = logging.getLogger(__name__)
 # DATABASE DEPENDENCIES
 # ============================================================================
 
-def get_db() -> Session:
-    """Get PostgreSQL database session."""
-    return get_postgres_db()
+# Use the postgres get_db directly as it's already a proper generator
+get_db = get_postgres_db
 
 
 # ============================================================================

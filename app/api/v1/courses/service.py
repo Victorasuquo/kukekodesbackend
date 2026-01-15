@@ -11,7 +11,8 @@ import logging
 import re
 
 from app.models.course import Course, Module, Lesson, CourseStatus, LessonStatus, SkillLevel
-from app.models.enrollment import Enrollment, UserProgress, Streak
+from app.models.enrollment import Enrollment, UserProgress
+from app.models.progress import Streak
 from app.services.youtube_service import youtube_service
 from app.db.mongodb import insert_activity
 from app.dependencies import NotFoundError, UnauthorizedError, ValidationError

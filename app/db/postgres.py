@@ -91,8 +91,9 @@ def init_db():
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created successfully")
     except Exception as e:
-        logger.error(f"Failed to create database tables: {str(e)}")
-        raise
+        logger.warning(f"Failed to initialize database: {str(e)}")
+        logger.warning("App will continue, but database operations may fail until connection is restored")
+        # Don't raise - allow app to start in degraded mode for development
 
 
 def drop_all_tables():
