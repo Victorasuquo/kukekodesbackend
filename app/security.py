@@ -304,10 +304,10 @@ def verify_password_reset_token(token: str) -> Optional[str]:
 
 # === CSRF & SECURITY HEADERS ===
 CORS_CONFIG = {
-    "allow_origins": settings.CORS_ORIGINS,
+    "allow_origins": ["*"],  # Allow all origins for development/testing - restrict later
     "allow_credentials": settings.CORS_CREDENTIALS,
-    "allow_methods": settings.CORS_METHODS,
-    "allow_headers": settings.CORS_HEADERS,
+    "allow_methods": ["*"],  # Allow all methods
+    "allow_headers": ["*"],  # Allow all headers
 }
 
 SECURITY_HEADERS = {

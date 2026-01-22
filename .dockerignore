@@ -1,0 +1,25 @@
+# .dockerignore
+.git
+.gitignore
+*.pyc
+__pycache__
+*.egg-info
+.pytest_cache
+.venv
+venv
+.kukekodes_venv
+.env.local
+.env.*.local
+node_modules
+.DS_Store
+.idea
+.vscode
+*.swp
+*.swo
+*~
+docs/
+tests/
+test_*.py
+conftest.py
+test.db
+*.md
