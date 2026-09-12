@@ -180,10 +180,11 @@ async def verify_token(token: str) -> Dict[str, Any]:
 
 # === BEARER TOKEN SECURITY SCHEME ===
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    credentials: HTTPAuthCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> Dict[str, Any]:
     """
     Dependency to extract and validate current user from Bearer token.
@@ -197,7 +198,14 @@ async def get_current_user(
     Raises:
         HTTPException: If token is invalid
     """
-    return await verify_token(credentials.credentials)
+    payload = await verify_token(credentials.credentials)
+    if payload.get("type") != "access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return payload
 
 
 async def get_current_admin(
@@ -216,10 +224,22 @@ async def get_current_admin(
         HTTPException: If user is not an admin
     """
     role = current_user.get("role")
-    if role not in ["admin", "instructor"]:
+    if role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins/instructors can access this resource",
+            detail="Administrator access required",
+        )
+    return current_user
+
+
+async def get_current_instructor(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Allow instructors and administrators to manage learning content."""
+    if current_user.get("role") not in {"admin", "instructor"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Instructor access required",
         )
     return current_user
 
@@ -243,7 +263,7 @@ async def get_current_student(
 
 
 async def get_optional_user(
-    credentials: Optional[HTTPAuthCredentials] = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
 ) -> Optional[Dict[str, Any]]:
     """
     Dependency for optional authentication.
@@ -304,10 +324,10 @@ def verify_password_reset_token(token: str) -> Optional[str]:
 
 # === CSRF & SECURITY HEADERS ===
 CORS_CONFIG = {
-    "allow_origins": ["*"],  # Allow all origins for development/testing - restrict later
+    "allow_origins": settings.CORS_ORIGINS,
     "allow_credentials": settings.CORS_CREDENTIALS,
-    "allow_methods": ["*"],  # Allow all methods
-    "allow_headers": ["*"],  # Allow all headers
+    "allow_methods": settings.CORS_METHODS,
+    "allow_headers": settings.CORS_HEADERS,
 }
 
 SECURITY_HEADERS = {

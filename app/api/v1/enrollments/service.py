@@ -16,7 +16,7 @@ from app.models.user import User
 from app.models.notification import Notification, NotificationType
 from app.services.email_service import email_service
 from app.db.mongodb import insert_activity
-from app.dependencies import NotFoundError, ValidationError, ConflictError
+from app.utils.exceptions import NotFoundError, ValidationError, ConflictError
 
 logger = logging.getLogger(__name__)
 

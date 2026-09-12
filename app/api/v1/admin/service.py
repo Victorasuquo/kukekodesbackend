@@ -3,13 +3,13 @@ Admin analytics and dashboard business logic.
 """
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import case, func
 from datetime import datetime, timedelta
 from typing import List, Tuple, Dict, Any
 import logging
 
 from app.models.user import User, UserRole
-from app.models.course import Course, CourseStatus
+from app.models.course import Course, CourseStatus, Lesson
 from app.models.enrollment import Enrollment, UserProgress
 from app.models.progress import Streak
 
@@ -36,12 +36,9 @@ class AdminService:
         ).count()
         
         # Average completion rate
-        total_possible_completions = db.query(Enrollment).count()
-        avg_completion_rate = (
-            (total_lessons_completed / total_possible_completions * 100)
-            if total_possible_completions > 0
-            else 0
-        )
+        avg_completion_rate = db.query(
+            func.avg(Enrollment.completion_percentage),
+        ).scalar() or 0
         
         # New users (last 7 days)
         one_week_ago = datetime.utcnow() - timedelta(days=7)
@@ -64,7 +61,7 @@ class AdminService:
             "total_courses": total_courses,
             "total_enrollments": total_enrollments,
             "total_lessons_completed": total_lessons_completed,
-            "average_completion_rate": round(avg_completion_rate, 2),
+            "average_completion_rate": round(float(avg_completion_rate), 2),
             "new_users_this_week": new_users_week,
             "new_courses_this_month": new_courses_month,
             "timestamp": datetime.utcnow().isoformat(),
@@ -272,11 +269,8 @@ class AdminService:
             "lessons_completed_last_7_days": lessons_per_day,
             "users_with_active_streak": users_with_streak,
             "average_lessons_per_user": round(
-                db.query(func.avg(
-                    func.count(UserProgress.id),
-                )).group_by(
-                    UserProgress.user_id,
-                ).scalar() or 0,
+                (db.query(UserProgress).count() / db.query(User).count())
+                if db.query(User).count() else 0,
                 2,
             ),
         }

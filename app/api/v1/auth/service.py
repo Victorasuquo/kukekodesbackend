@@ -214,7 +214,7 @@ class AuthService:
         return user, access_token, refresh_token
     
     @staticmethod
-    def refresh_access_token(refresh_token: str) -> str:
+    def refresh_access_token(db: Session, refresh_token: str) -> str:
         """
         Create new access token from refresh token.
         
@@ -239,12 +239,19 @@ class AuthService:
             
             if not user_id or not email:
                 raise ValidationError("Invalid token data")
+
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user or not user.is_active:
+                raise ValidationError("User account is inactive or unavailable")
+            if user.email.lower() != email.lower():
+                raise ValidationError("Invalid token data")
             
             # Create new access token
             access_token = create_access_token(
                 user_id=user_id,
-                email=email,
-                role="student",  # Default, should fetch from DB
+                email=user.email,
+                role=user.role.value,
+                username=user.username,
             )
             
             return access_token

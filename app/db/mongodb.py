@@ -92,38 +92,36 @@ def create_indexes():
         db = get_mongodb()
         
         # === ACTIVITIES COLLECTION ===
-        if "activities" in db.list_collection_names():
-            db.activities.create_index([("user_id", ASCENDING)])
-            db.activities.create_index([("timestamp", DESCENDING)])
-            db.activities.create_index([("user_id", ASCENDING), ("timestamp", DESCENDING)])
-            logger.info("Indexes created for 'activities' collection")
+        db.activities.create_index([("user_id", ASCENDING)])
+        db.activities.create_index([("timestamp", DESCENDING)])
+        db.activities.create_index([("user_id", ASCENDING), ("timestamp", DESCENDING)])
+        logger.info("Indexes created for 'activities' collection")
         
         # === AI INTERACTIONS COLLECTION ===
-        if "ai_interactions" in db.list_collection_names():
-            db.ai_interactions.create_index([("user_id", ASCENDING)])
-            db.ai_interactions.create_index([("lesson_id", ASCENDING)])
-            db.ai_interactions.create_index([("timestamp", DESCENDING)])
-            logger.info("Indexes created for 'ai_interactions' collection")
+        db.ai_interactions.create_index([("user_id", ASCENDING)])
+        db.ai_interactions.create_index([("lesson_id", ASCENDING)])
+        db.ai_interactions.create_index([("timestamp", DESCENDING)])
+        logger.info("Indexes created for 'ai_interactions' collection")
         
         # === FORUM THREADS COLLECTION ===
-        if "forum_threads" in db.list_collection_names():
-            db.forum_threads.create_index([("course_id", ASCENDING)])
-            db.forum_threads.create_index([("user_id", ASCENDING)])
-            db.forum_threads.create_index([("created_at", DESCENDING)])
-            logger.info("Indexes created for 'forum_threads' collection")
+        db.forum_threads.create_index([("course_id", ASCENDING)])
+        db.forum_threads.create_index([("organization_id", ASCENDING)])
+        db.forum_threads.create_index([("user_id", ASCENDING)])
+        db.forum_threads.create_index([("created_at", DESCENDING)])
+        db.forum_threads.create_index([("moderation_status", ASCENDING)])
+        logger.info("Indexes created for 'forum_threads' collection")
         
         # === FORUM REPLIES COLLECTION ===
-        if "forum_replies" in db.list_collection_names():
-            db.forum_replies.create_index([("thread_id", ASCENDING)])
-            db.forum_replies.create_index([("user_id", ASCENDING)])
-            db.forum_replies.create_index([("created_at", DESCENDING)])
-            logger.info("Indexes created for 'forum_replies' collection")
+        db.forum_replies.create_index([("thread_id", ASCENDING)])
+        db.forum_replies.create_index([("user_id", ASCENDING)])
+        db.forum_replies.create_index([("created_at", DESCENDING)])
+        db.forum_replies.create_index([("moderation_status", ASCENDING)])
+        logger.info("Indexes created for 'forum_replies' collection")
         
         # === ANALYTICS COLLECTION ===
-        if "analytics" in db.list_collection_names():
-            db.analytics.create_index([("user_id", ASCENDING)])
-            db.analytics.create_index([("course_id", ASCENDING)])
-            logger.info("Indexes created for 'analytics' collection")
+        db.analytics.create_index([("user_id", ASCENDING)])
+        db.analytics.create_index([("course_id", ASCENDING)])
+        logger.info("Indexes created for 'analytics' collection")
         
     except Exception as e:
         logger.warning(f"Error creating MongoDB indexes: {str(e)}")

@@ -11,11 +11,10 @@ import logging
 
 from app.models.user import User, UserProfile
 from app.models.enrollment import Enrollment, UserProgress
-from app.models.progress import Streak
-from app.models.badge import Badge, user_badges
+from app.models.progress import Streak, Badge, BadgeAward
 from app.models.notification import NotificationPreference
 from app.security import verify_password, hash_password
-from app.dependencies import NotFoundError, ValidationError
+from app.utils.exceptions import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -123,10 +122,10 @@ class UserService:
         # Get streak
         streak = db.query(Streak).filter(Streak.user_id == user_id).first()
         
-        # Get badges
-        badges = db.query(Badge).join(user_badges).filter(
-            user_badges.c.user_id == user_id,
-        ).order_by(user_badges.c.earned_at.desc()).limit(5).all()
+        # Get badges (via BadgeAward)
+        badge_awards = db.query(BadgeAward).filter(
+            BadgeAward.user_id == user_id,
+        ).order_by(BadgeAward.earned_at.desc()).limit(5).all()
         
         # Get statistics
         lessons_completed = db.query(UserProgress).filter(
@@ -152,19 +151,20 @@ class UserService:
             },
             "recent_achievements": [
                 {
-                    "id": str(badge.id),
-                    "name": badge.name,
-                    "icon_url": badge.icon_url,
+                    "id": str(award.badge.id),
+                    "name": award.badge.name,
+                    "icon_url": award.badge.icon_url,
+                    "earned_at": award.earned_at.isoformat(),
                 }
-                for badge in badges
+                for award in badge_awards
             ],
             "statistics": {
                 "total_courses_enrolled": len(enrollments),
                 "total_courses_completed": sum(1 for e in enrollments if e.is_completed),
                 "total_lessons_completed": lessons_completed,
                 "total_time_spent_hours": round(total_time / 60, 1),
-                "badges_earned": db.query(Badge).join(user_badges).filter(
-                    user_badges.c.user_id == user_id,
+                "badges_earned": db.query(BadgeAward).filter(
+                    BadgeAward.user_id == user_id,
                 ).count(),
             },
         }
@@ -237,8 +237,8 @@ class UserService:
             }
         
         # Get public info
-        badges = db.query(Badge).join(user_badges).filter(
-            user_badges.c.user_id == user_id,
+        badge_awards = db.query(BadgeAward).filter(
+            BadgeAward.user_id == user_id,
         ).all()
         
         completed_courses = db.query(Enrollment).filter(
@@ -260,11 +260,11 @@ class UserService:
             "longest_streak_days": streak.longest_streak_count if streak else 0,
             "badges_earned": [
                 {
-                    "id": str(b.id),
-                    "name": b.name,
-                    "icon_url": b.icon_url,
+                    "id": str(award.badge.id),
+                    "name": award.badge.name,
+                    "icon_url": award.badge.icon_url,
                 }
-                for b in badges
+                for award in badge_awards
             ] if profile_pref and profile_pref.show_badges_publicly else [],
         }
     

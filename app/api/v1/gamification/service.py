@@ -8,8 +8,7 @@ from datetime import datetime, timedelta
 from typing import List, Tuple, Optional
 import logging
 
-from app.models.badge import Badge, user_badges
-from app.models.progress import Streak
+from app.models.progress import Badge, BadgeAward, Streak, Leaderboard
 from app.models.enrollment import UserProgress, Enrollment
 from app.models.user import User
 
@@ -24,10 +23,19 @@ class GamificationService:
     # ========================================================================
     
     @staticmethod
-    def get_user_badges(db: Session, user_id: str) -> List[Badge]:
-        """Get all badges earned by user."""
-        badges = db.query(Badge).join(user_badges).filter(
-            user_badges.c.user_id == user_id,
+    def get_user_badges(db: Session, user_id: str) -> List[BadgeAward]:
+        """Get all badges earned by user with their award details."""
+        badge_awards = db.query(BadgeAward).filter(
+            BadgeAward.user_id == user_id,
+        ).order_by(BadgeAward.earned_at.desc()).all()
+        
+        return badge_awards
+    
+    @staticmethod
+    def get_user_badge_objects(db: Session, user_id: str) -> List[Badge]:
+        """Get all badge objects earned by user."""
+        badges = db.query(Badge).join(BadgeAward).filter(
+            BadgeAward.user_id == user_id,
         ).order_by(Badge.name).all()
         
         return badges

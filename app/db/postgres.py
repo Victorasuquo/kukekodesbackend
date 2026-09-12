@@ -87,6 +87,9 @@ def init_db():
     Called on app startup.
     """
     try:
+        if not settings.AUTO_CREATE_TABLES:
+            logger.info("Skipping metadata.create_all; database schema is managed by Alembic")
+            return
         logger.info("Creating database tables...")
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created successfully")

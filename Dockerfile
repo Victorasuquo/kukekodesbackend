@@ -1,32 +1,43 @@
-# Dockerfile for Google Cloud Run deployment
-FROM python:3.11-slim
+# syntax=docker/dockerfile:1.7
 
-# Set working directory
-WORKDIR /app
+FROM python:3.11-slim AS builder
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV PORT=8080
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    libpq-dev \
+WORKDIR /build
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y build-essential libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
 COPY requirements.txt .
+RUN python -m pip wheel --wheel-dir /wheels -r requirements.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+FROM python:3.11-slim AS runtime
 
-# Expose port
-EXPOSE 8080
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PORT=8000
 
-# Run the application
-CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y libpq5 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 10001 kukekodes \
+    && useradd --system --uid 10001 --gid kukekodes --home-dir /app --shell /usr/sbin/nologin kukekodes
+
+COPY --from=builder /wheels /wheels
+RUN python -m pip install --no-cache-dir /wheels/* \
+    && rm -rf /wheels
+
+COPY --chown=kukekodes:kukekodes . .
+
+USER kukekodes
+
+EXPOSE 8000
+
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips=${FORWARDED_ALLOW_IPS:-*}"]

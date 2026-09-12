@@ -337,3 +337,106 @@ async def reset_lesson_progress(
     except Exception as e:
         logger.error(f"Error resetting progress: {str(e)}")
         raise
+
+
+# ============================================================================
+# CERTIFICATES
+# ============================================================================
+
+@router.get(
+    "/certificate/{course_id}",
+    response_model=Dict[str, Any],
+    status_code=status.HTTP_200_OK,
+    summary="Get course certificate",
+    description="Get certificate details for a completed course",
+)
+async def get_course_certificate(
+    course_id: str,
+    current_user: Dict[str, Any] = Depends(get_student_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Get certificate for a completed course.
+    
+    Returns certificate details including:
+    - Certificate ID
+    - Course name
+    - User name
+    - Completion date
+    - Certificate URL
+    - Verification code
+    """
+    try:
+        user_id = current_user.get("sub")
+        
+        certificate = await ProgressService.get_certificate(
+            db=db,
+            user_id=user_id,
+            course_id=course_id,
+        )
+        
+        return certificate
+    
+    except Exception as e:
+        logger.error(f"Error fetching certificate: {str(e)}")
+        raise
+
+
+@router.get(
+    "/certificates",
+    response_model=Dict[str, Any],
+    status_code=status.HTTP_200_OK,
+    summary="Get all user certificates",
+    description="Get all certificates earned by the user",
+)
+async def get_user_certificates(
+    current_user: Dict[str, Any] = Depends(get_student_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Get all certificates earned by the user.
+    
+    Returns list of certificates for all completed courses.
+    """
+    try:
+        user_id = current_user.get("sub")
+        
+        certificates = await ProgressService.get_user_certificates(
+            db=db,
+            user_id=user_id,
+        )
+        
+        return certificates
+    
+    except Exception as e:
+        logger.error(f"Error fetching certificates: {str(e)}")
+        raise
+
+
+@router.get(
+    "/verify-certificate/{verification_code}",
+    response_model=Dict[str, Any],
+    status_code=status.HTTP_200_OK,
+    summary="Verify certificate",
+    description="Verify a certificate using its verification code",
+)
+async def verify_certificate(
+    verification_code: str,
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Verify a certificate using its verification code.
+    
+    This is a public endpoint for employers/third parties to verify certificates.
+    """
+    try:
+        result = ProgressService.verify_certificate(
+            db=db,
+            verification_code=verification_code,
+        )
+        
+        return result
+    
+    except Exception as e:
+        logger.error(f"Error verifying certificate: {str(e)}")
+        raise

@@ -12,6 +12,7 @@ from app.db.postgres import get_db as get_postgres_db
 from app.security import (
     get_current_user,
     get_current_admin,
+    get_current_instructor,
     get_current_student,
     get_optional_user,
 )
@@ -45,6 +46,13 @@ async def get_student_user(
     current_user: Dict[str, Any] = Depends(get_current_student),
 ) -> Dict[str, Any]:
     """Get current authenticated student user."""
+    return current_user
+
+
+async def get_instructor_user(
+    current_user: Dict[str, Any] = Depends(get_current_instructor),
+) -> Dict[str, Any]:
+    """Get a user authorized to manage course content."""
     return current_user
 
 
@@ -89,7 +97,7 @@ def check_resource_ownership(
 
 def check_admin_access(current_user: Dict[str, Any]) -> bool:
     """Check if user has admin access."""
-    return current_user.get("role") in ["admin", "instructor"]
+    return current_user.get("role") == "admin"
 
 
 def get_user_id_from_token(current_user: Dict[str, Any]) -> str:

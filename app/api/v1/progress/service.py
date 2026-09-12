@@ -11,12 +11,12 @@ import logging
 
 from app.models.course import Course, Module, Lesson
 from app.models.enrollment import Enrollment, UserProgress
-from app.models.progress import Streak
+from app.models.progress import Streak, Badge, BadgeAward
 from app.models.user import User
 from app.models.notification import Notification, NotificationType, NotificationPreference
 from app.services.email_service import email_service
 from app.db.mongodb import insert_activity
-from app.dependencies import NotFoundError, ValidationError
+from app.utils.exceptions import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -403,10 +403,10 @@ class ProgressService:
             "longest": streak.longest_streak_count if streak else 0,
         } if streak else {"current": 0, "longest": 0}
         
-        # Get recent badges
-        recent_badges = db.query(Badge).join(user_badges).filter(
-            user_badges.c.user_id == user_id,
-        ).order_by(user_badges.c.earned_at.desc()).limit(5).all()
+        # Get recent badges (via BadgeAward)
+        recent_awards = db.query(BadgeAward).filter(
+            BadgeAward.user_id == user_id,
+        ).order_by(BadgeAward.earned_at.desc()).limit(5).all()
         
         # Get stats
         stats = {
@@ -419,7 +419,7 @@ class ProgressService:
             "total_time_spent_minutes": db.query(func.sum(UserProgress.time_spent_minutes)).filter(
                 UserProgress.user_id == user_id,
             ).scalar() or 0,
-            "badges_earned": len(recent_badges),
+            "badges_earned": len(recent_awards),
         }
         
         return {
@@ -430,11 +430,12 @@ class ProgressService:
             "streak": streak_data,
             "recent_badges": [
                 {
-                    "id": str(badge.id),
-                    "name": badge.name,
-                    "icon_url": badge.icon_url,
+                    "id": str(award.badge.id),
+                    "name": award.badge.name,
+                    "icon_url": award.badge.icon_url,
+                    "earned_at": award.earned_at.isoformat(),
                 }
-                for badge in recent_badges
+                for award in recent_awards
             ],
             "statistics": stats,
         }
@@ -454,8 +455,8 @@ class ProgressService:
         
         streak = db.query(Streak).filter(Streak.user_id == user_id).first()
         
-        badges = db.query(Badge).join(user_badges).filter(
-            user_badges.c.user_id == user_id,
+        badge_awards = db.query(BadgeAward).filter(
+            BadgeAward.user_id == user_id,
         ).all()
         
         return {
@@ -467,8 +468,8 @@ class ProgressService:
             ).scalar() or 0) / 60, 1),
             "current_streak_days": streak.current_streak_count if streak else 0,
             "longest_streak_days": streak.longest_streak_count if streak else 0,
-            "total_badges": len(badges),
-            "xp_points": len(badges) * 50 + sum(1 for e in enrollments if e.is_completed) * 100,  # Simple XP calc
+            "total_badges": len(badge_awards),
+            "xp_points": len(badge_awards) * 50 + sum(1 for e in enrollments if e.is_completed) * 100,  # Simple XP calc
         }
     
     @staticmethod
@@ -542,23 +543,23 @@ class ProgressService:
         """
         earned_badges = []
         
-        # Get user's existing badges
-        user_badges_ids = db.query(user_badges.c.badge_id).filter(
-            user_badges.c.user_id == user_id,
+        # Get user's existing badge IDs (via BadgeAward)
+        existing_awards = db.query(BadgeAward.badge_id).filter(
+            BadgeAward.user_id == user_id,
         ).all()
         
-        user_badge_ids = [id[0] for id in user_badges_ids]
+        user_badge_ids = [award[0] for award in existing_awards]
         
         # Check for "First Lesson" badge
         if completed_lessons == 1:
             badge = db.query(Badge).filter(Badge.name == "First Lesson").first()
             if badge and badge.id not in user_badge_ids:
-                db.execute(
-                    user_badges.insert().values(
-                        user_id=user_id,
-                        badge_id=badge.id,
-                    )
+                award = BadgeAward(
+                    user_id=user_id,
+                    badge_id=badge.id,
+                    context=f'{{"lesson_id": "{lesson_id}"}}',
                 )
+                db.add(award)
                 earned_badges.append(badge)
         
         # Check for streak badges
@@ -574,12 +575,12 @@ class ProgressService:
             if streak_count >= days:
                 badge = db.query(Badge).filter(Badge.name == badge_name).first()
                 if badge and badge.id not in user_badge_ids:
-                    db.execute(
-                        user_badges.insert().values(
-                            user_id=user_id,
-                            badge_id=badge.id,
-                        )
+                    award = BadgeAward(
+                        user_id=user_id,
+                        badge_id=badge.id,
+                        context=f'{{"streak_days": {days}}}',
                     )
+                    db.add(award)
                     earned_badges.append(badge)
         
         # Check for completion badges (by course)
@@ -618,3 +619,147 @@ class ProgressService:
             ).order_by(Lesson.order).first()
         
         return None
+    
+    # ========================================================================
+    # CERTIFICATES
+    # ========================================================================
+    
+    @staticmethod
+    async def get_certificate(
+        db: Session,
+        user_id: str,
+        course_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Get certificate for a completed course.
+        
+        Args:
+            db: Database session
+            user_id: User ID
+            course_id: Course ID
+        
+        Returns:
+            Certificate details
+        
+        Raises:
+            NotFoundError: If enrollment not found
+            ValidationError: If course not completed
+        """
+        import hashlib
+        
+        # Get enrollment
+        enrollment = db.query(Enrollment).filter(
+            Enrollment.user_id == user_id,
+            Enrollment.course_id == course_id,
+        ).first()
+        
+        if not enrollment:
+            raise NotFoundError("Enrollment not found")
+        
+        if not enrollment.is_completed:
+            raise ValidationError("Course not completed yet. Complete all lessons to earn your certificate.")
+        
+        # Get user and course
+        user = db.query(User).filter(User.id == user_id).first()
+        course = enrollment.course
+        
+        # Generate verification code (deterministic based on user_id, course_id, completion date)
+        verification_data = f"{user_id}-{course_id}-{enrollment.completed_at.isoformat()}"
+        verification_code = hashlib.sha256(verification_data.encode()).hexdigest()[:16].upper()
+        
+        return {
+            "certificate_id": f"CERT-{verification_code}",
+            "user_id": str(user_id),
+            "user_name": user.get_full_name(),
+            "course_id": str(course_id),
+            "course_title": course.title,
+            "course_description": course.description,
+            "skill_level": course.skill_level.value,
+            "completed_at": enrollment.completed_at.isoformat(),
+            "completion_percentage": 100.0,
+            "verification_code": verification_code,
+            "verification_url": f"/api/v1/progress/verify-certificate/{verification_code}",
+            "is_valid": True,
+            "issued_by": "Kukekodes",
+        }
+    
+    @staticmethod
+    async def get_user_certificates(
+        db: Session,
+        user_id: str,
+    ) -> Dict[str, Any]:
+        """Get all certificates for a user."""
+        import hashlib
+        
+        # Get all completed enrollments
+        completed_enrollments = db.query(Enrollment).filter(
+            Enrollment.user_id == user_id,
+            Enrollment.is_completed == True,
+        ).all()
+        
+        user = db.query(User).filter(User.id == user_id).first()
+        
+        certificates = []
+        for enrollment in completed_enrollments:
+            course = enrollment.course
+            
+            # Generate verification code
+            verification_data = f"{user_id}-{enrollment.course_id}-{enrollment.completed_at.isoformat()}"
+            verification_code = hashlib.sha256(verification_data.encode()).hexdigest()[:16].upper()
+            
+            certificates.append({
+                "certificate_id": f"CERT-{verification_code}",
+                "course_id": str(enrollment.course_id),
+                "course_title": course.title,
+                "skill_level": course.skill_level.value,
+                "completed_at": enrollment.completed_at.isoformat(),
+                "verification_code": verification_code,
+            })
+        
+        return {
+            "user_id": str(user_id),
+            "user_name": user.get_full_name(),
+            "total_certificates": len(certificates),
+            "certificates": certificates,
+        }
+    
+    @staticmethod
+    def verify_certificate(
+        db: Session,
+        verification_code: str,
+    ) -> Dict[str, Any]:
+        """
+        Verify a certificate by its verification code.
+        
+        This is a public endpoint that can be used by employers/third parties.
+        """
+        import hashlib
+        
+        # Find all completed enrollments and check verification codes
+        completed_enrollments = db.query(Enrollment).filter(
+            Enrollment.is_completed == True,
+        ).all()
+        
+        for enrollment in completed_enrollments:
+            verification_data = f"{enrollment.user_id}-{enrollment.course_id}-{enrollment.completed_at.isoformat()}"
+            code = hashlib.sha256(verification_data.encode()).hexdigest()[:16].upper()
+            
+            if code == verification_code.upper():
+                user = db.query(User).filter(User.id == enrollment.user_id).first()
+                course = enrollment.course
+                
+                return {
+                    "is_valid": True,
+                    "certificate_id": f"CERT-{code}",
+                    "user_name": user.get_full_name(),
+                    "course_title": course.title,
+                    "skill_level": course.skill_level.value,
+                    "completed_at": enrollment.completed_at.isoformat(),
+                    "issued_by": "Kukekodes",
+                    "message": "This certificate is valid and was issued by Kukekodes.",
+                }
+        
+        return {
+            "is_valid": False,
+            "message": "Certificate not found or invalid verification code.",
+        }

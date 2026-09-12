@@ -166,12 +166,13 @@ async def login(
 )
 async def refresh_token(
     request: RefreshTokenRequest,
+    db: Session = Depends(get_db),
 ) -> TokenResponse:
     """
     Get a new access token using a valid refresh token.
     """
     try:
-        access_token = AuthService.refresh_access_token(request.refresh_token)
+        access_token = AuthService.refresh_access_token(db, request.refresh_token)
         
         return TokenResponse(
             access_token=access_token,

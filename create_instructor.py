@@ -65,11 +65,11 @@ if __name__ == "__main__":
         print("\n📝 Creating instructor account...\n")
         instructor = create_instructor(
             db=db,
-            email="instructor@kukekodes.com",
-            password="InstructorPass123",
-            first_name="John",
-            last_name="Instructor",
-            role="instructor"
+            email="admin@kukekodes.com",
+            password="AdminPass123",
+            first_name="Victor",
+            last_name="Admin",
+            role="admin"
         )
         
         if instructor:

@@ -3,9 +3,9 @@ Configuration management for Kukekodes backend.
 Loads environment variables and provides app settings.
 """
 
-import os
 from typing import Optional
-from pydantic_settings import BaseSettings
+from pydantic import model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 
@@ -16,24 +16,19 @@ class Settings(BaseSettings):
     APP_NAME: str = "Kukekodes Learning Platform"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
-    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    ENVIRONMENT: str = "development"
     
     # === DATABASE ===
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL",
-        "postgresql://user:password@localhost:5432/kukekodes"
-    )
-    MONGODB_URI: str = os.getenv(
-        "MONGODB_URI",
-        "mongodb://localhost:27017"
-    )
+    DATABASE_URL: str = "postgresql://user:password@localhost:5432/kukekodes"
+    MONGODB_URI: str = "mongodb://localhost:27017"
     MONGODB_DB_NAME: str = "kukekodes_analytics"
+    AUTO_CREATE_TABLES: bool = True
     
     # === REDIS (Optional, for caching/sessions) ===
-    REDIS_URL: Optional[str] = os.getenv("REDIS_URL")
+    REDIS_URL: Optional[str] = None
     
     # === JWT & SECURITY ===
-    JWT_SECRET: str = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
+    JWT_SECRET: str = "your-secret-key-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -47,25 +42,29 @@ class Settings(BaseSettings):
     CORS_CREDENTIALS: bool = True
     CORS_METHODS: list = ["*"]
     CORS_HEADERS: list = ["*"]
+    TRUSTED_HOSTS: list[str] = ["localhost", "127.0.0.1", "testserver"]
     
     # === EXTERNAL APIs ===
-    SENDGRID_API_KEY: str = os.getenv("SENDGRID_API_KEY", "")
-    SENDGRID_FROM_EMAIL: str = os.getenv("SENDGRID_FROM_EMAIL", "noreply@kukekodes.com")
+    SENDGRID_API_KEY: str = ""
+    SENDGRID_FROM_EMAIL: str = "noreply@kukekodes.com"
+    RESEND_API_KEY: str = ""
+    RESEND_FROM_EMAIL: str = "KukeKodes <noreply@kukekodes.com>"
+    RESEND_WEBHOOK_SECRET: str = ""
     
-    YOUTUBE_API_KEY: str = os.getenv("YOUTUBE_API_KEY", "")
+    YOUTUBE_API_KEY: str = ""
     
-    CLOUDINARY_CLOUD_NAME: str = os.getenv("CLOUDINARY_CLOUD_NAME", "")
-    CLOUDINARY_API_KEY: str = os.getenv("CLOUDINARY_API_KEY", "")
-    CLOUDINARY_API_SECRET: str = os.getenv("CLOUDINARY_API_SECRET", "")
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
     
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_API_KEY: str = ""
     
     # === EMAIL SETTINGS ===
     EMAIL_VERIFICATION_REQUIRED: bool = False
     PASSWORD_RESET_EXPIRE_MINUTES: int = 30
     
     # === LOGGING ===
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"  # or "standard"
     
     # === RATE LIMITING ===
@@ -86,10 +85,44 @@ class Settings(BaseSettings):
     EXTERNAL_API_TIMEOUT: int = 30
     DATABASE_TIMEOUT: int = 30
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-        extra = "allow"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="allow",
+    )
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT.lower() in {"production", "prod"}
+
+    @model_validator(mode="after")
+    def validate_production_settings(self) -> "Settings":
+        """Fail fast instead of launching production with development defaults."""
+        if not self.is_production:
+            return self
+
+        errors = []
+        if len(self.JWT_SECRET) < 32 or self.JWT_SECRET == "your-secret-key-change-in-production":
+            errors.append("JWT_SECRET must be a non-default secret of at least 32 characters")
+        if "*" in self.CORS_ORIGINS:
+            errors.append("CORS_ORIGINS cannot contain '*' in production")
+        if "*" in self.TRUSTED_HOSTS:
+            errors.append("TRUSTED_HOSTS cannot contain '*' in production")
+        if "localhost" in self.DATABASE_URL or "user:password" in self.DATABASE_URL:
+            errors.append("DATABASE_URL must point to the production PostgreSQL database")
+        if "localhost" in self.MONGODB_URI:
+            errors.append("MONGODB_URI must point to the production MongoDB deployment")
+        if self.AUTO_CREATE_TABLES:
+            errors.append("AUTO_CREATE_TABLES must be false in production; use Alembic migrations")
+        if not self.REDIS_URL:
+            errors.append("REDIS_URL is required in production for rate limits and background jobs")
+        if not self.RESEND_API_KEY:
+            errors.append("RESEND_API_KEY is required in production")
+        if not self.GEMINI_API_KEY:
+            errors.append("GEMINI_API_KEY is required in production")
+        if errors:
+            raise ValueError("Invalid production configuration: " + "; ".join(errors))
+        return self
 
 
 @lru_cache()

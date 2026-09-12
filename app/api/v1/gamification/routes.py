@@ -10,6 +10,7 @@ import logging
 from app.api.v1.gamification.service import GamificationService
 from app.api.v1.gamification.schemas import (
     BadgeResponse,
+    BadgeAwardResponse,
     StreakResponse,
     LeaderboardUserResponse,
 )
@@ -45,25 +46,28 @@ async def get_user_badges(
     Returns:
     - List of earned badges with icons
     - When earned
-    - Badge rarity
+    - Badge level
     """
     try:
         user_id = current_user.get("sub")
         
-        badges = GamificationService.get_user_badges(db=db, user_id=user_id)
+        badge_awards = GamificationService.get_user_badges(db=db, user_id=user_id)
         
         return {
             "user_id": user_id,
-            "badges_earned": len(badges),
+            "badges_earned": len(badge_awards),
             "badges": [
-                BadgeResponse(
-                    id=badge.id,
-                    name=badge.name,
-                    description=badge.description,
-                    icon_url=badge.icon_url,
-                    rarity=badge.rarity,
+                BadgeAwardResponse(
+                    id=award.id,
+                    badge_id=award.badge.id,
+                    badge_name=award.badge.name,
+                    badge_description=award.badge.description,
+                    badge_icon_url=award.badge.icon_url,
+                    badge_icon_emoji=award.badge.icon_emoji,
+                    badge_level=award.badge.level,
+                    earned_at=award.earned_at,
                 )
-                for badge in badges
+                for award in badge_awards
             ],
         }
     
@@ -93,7 +97,11 @@ async def get_all_badges(
                     name=badge.name,
                     description=badge.description,
                     icon_url=badge.icon_url,
-                    rarity=badge.rarity,
+                    icon_emoji=badge.icon_emoji,
+                    level=badge.level,
+                    criteria_type=badge.criteria_type,
+                    criteria_value=badge.criteria_value,
+                    xp_reward=badge.xp_reward,
                 )
                 for badge in badges
             ],

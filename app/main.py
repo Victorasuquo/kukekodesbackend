@@ -6,12 +6,14 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from contextlib import asynccontextmanager
 import logging
+import uuid
 
 from app.config import settings
-from app.db.postgres import init_db
-from app.db.mongodb import connect_mongodb, disconnect_mongodb
+from app.db.postgres import init_db, engine
+from app.db.mongodb import connect_mongodb, disconnect_mongodb, get_mongodb
 from app.security import CORS_CONFIG, SECURITY_HEADERS
 
 # Configure logging
@@ -93,7 +95,7 @@ app.add_middleware(
 # Trusted Host Middleware
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["*"],  # Configure based on your domain
+    allowed_hosts=settings.TRUSTED_HOSTS,
 )
 
 
@@ -104,11 +106,16 @@ app.add_middleware(
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     """Handle general exceptions."""
-    logger.error(f"Unhandled exception: {str(exc)}")
+    request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+    logger.exception("Unhandled exception", extra={"request_id": request_id})
     
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"error": "Internal server error", "detail": str(exc)},
+        content={
+            "code": "internal_error",
+            "message": "Internal server error",
+            "request_id": request_id,
+        },
     )
 
 
@@ -117,7 +124,11 @@ async def not_found_handler(request: Request, exc):
     """Handle 404 errors."""
     return JSONResponse(
         status_code=status.HTTP_404_NOT_FOUND,
-        content={"error": "Not found", "detail": "Resource not found"},
+        content={
+            "code": "not_found",
+            "message": "Resource not found",
+            "request_id": getattr(request.state, "request_id", None),
+        },
     )
 
 
@@ -128,10 +139,13 @@ async def not_found_handler(request: Request, exc):
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     """Add security headers to all responses."""
+    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    request.state.request_id = request_id
     response = await call_next(request)
     
     for header, value in SECURITY_HEADERS.items():
         response.headers[header] = value
+    response.headers["X-Request-ID"] = request_id
     
     return response
 
@@ -140,15 +154,61 @@ async def add_security_headers(request: Request, call_next):
 # HEALTH CHECK ENDPOINT
 # ============================================================================
 
-@app.get("/health", tags=["Health"])
-async def health_check():
-    """Health check endpoint."""
+@app.get("/livez", tags=["Health"])
+async def livez():
+    """Process liveness check that does not depend on external services."""
     return {
-        "status": "healthy",
+        "status": "live",
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
         "environment": settings.ENVIRONMENT,
     }
+
+
+@app.get("/readyz", tags=["Health"])
+async def readyz():
+    """Readiness check for required runtime dependencies."""
+    checks: dict[str, str] = {}
+    overall_status = status.HTTP_200_OK
+
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        checks["postgres"] = "ok"
+    except Exception as exc:
+        logger.warning("PostgreSQL readiness check failed: %s", exc)
+        checks["postgres"] = "failed"
+        overall_status = status.HTTP_503_SERVICE_UNAVAILABLE
+
+    try:
+        get_mongodb().command("ping")
+        checks["mongodb"] = "ok"
+    except Exception as exc:
+        logger.warning("MongoDB readiness check failed: %s", exc)
+        checks["mongodb"] = "failed"
+        overall_status = status.HTTP_503_SERVICE_UNAVAILABLE
+
+    checks["redis"] = "configured" if settings.REDIS_URL else "missing"
+    if settings.is_production and not settings.REDIS_URL:
+        overall_status = status.HTTP_503_SERVICE_UNAVAILABLE
+
+    checks["configuration"] = "ok"
+    payload = {
+        "status": "ready" if overall_status == status.HTTP_200_OK else "not_ready",
+        "checks": checks,
+        "app": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "environment": settings.ENVIRONMENT,
+    }
+    if overall_status != status.HTTP_200_OK:
+        return JSONResponse(status_code=overall_status, content=payload)
+    return payload
+
+
+@app.get("/health", tags=["Health"], include_in_schema=False)
+async def health_check():
+    """Backward-compatible liveness alias."""
+    return await livez()
 
 
 @app.get("/", tags=["Root"])
@@ -168,11 +228,29 @@ async def root():
 
 # Import routes
 from app.api.v1.auth.routes import router as auth_router
+from app.api.v1.admin.auth_routes import router as admin_auth_router
+from app.api.v1.admin.routes import router as admin_router
 from app.api.v1.courses.routes import router as courses_router
+from app.api.v1.modules.routes import router as modules_router
+from app.api.v1.lessons.routes import router as lessons_router
+from app.api.v1.enrollments.routes import router as enrollments_router
+from app.api.v1.progress.routes import router as progress_router
+from app.api.v1.users.routes import router as users_router
+from app.api.v1.gamification.routes import router as gamification_router
+from app.api.v1.notifications.routes import router as notifications_router
 
 # Include routers
 app.include_router(auth_router)
+app.include_router(admin_auth_router)
+app.include_router(admin_router)
 app.include_router(courses_router)
+app.include_router(modules_router)
+app.include_router(lessons_router)
+app.include_router(enrollments_router)
+app.include_router(progress_router)
+app.include_router(users_router)
+app.include_router(gamification_router)
+app.include_router(notifications_router)
 
 
 # ============================================================================

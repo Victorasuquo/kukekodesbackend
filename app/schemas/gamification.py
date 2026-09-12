@@ -4,6 +4,7 @@ Pydantic models for gamification.
 
 from pydantic import BaseModel, Field
 from typing import Optional
+from datetime import datetime
 from uuid import UUID
 
 
@@ -17,8 +18,31 @@ class BadgeResponse(BaseModel):
     id: UUID
     name: str
     description: str
-    icon_url: Optional[str]
-    rarity: Optional[str]  # common, rare, epic, legendary
+    icon_url: Optional[str] = None
+    icon_emoji: Optional[str] = None
+    level: Optional[str] = None  # bronze, silver, gold, platinum
+    criteria_type: Optional[str] = None
+    criteria_value: Optional[int] = None
+    xp_reward: Optional[int] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class BadgeAwardResponse(BaseModel):
+    """Badge award with badge details and when earned."""
+    
+    id: UUID
+    badge_id: UUID
+    badge_name: str
+    badge_description: str
+    badge_icon_url: Optional[str] = None
+    badge_icon_emoji: Optional[str] = None
+    badge_level: Optional[str] = None
+    earned_at: datetime
+    
+    class Config:
+        from_attributes = True
 
 
 # ============================================================================

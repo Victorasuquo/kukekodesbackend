@@ -28,6 +28,7 @@ from app.api.v1.courses.schemas import (
 from app.dependencies import (
     get_db,
     get_admin_user,
+    get_instructor_user,
     get_student_user,
     get_pagination,
     PaginationParams,
@@ -52,7 +53,7 @@ router = APIRouter(prefix="/api/v1", tags=["Courses"])
 )
 async def create_course(
     request: CourseCreateRequest,
-    current_user: Dict[str, Any] = Depends(get_admin_user),
+    current_user: Dict[str, Any] = Depends(get_instructor_user),
     db: Session = Depends(get_db),
 ) -> CourseResponse:
     """
@@ -171,7 +172,7 @@ async def get_course(
 async def update_course(
     course_id: str,
     request: CourseUpdateRequest,
-    current_user: Dict[str, Any] = Depends(get_admin_user),
+    current_user: Dict[str, Any] = Depends(get_instructor_user),
     db: Session = Depends(get_db),
 ) -> CourseResponse:
     """Update course details (draft courses only)."""
@@ -217,7 +218,7 @@ async def update_course(
 )
 async def delete_course(
     course_id: str,
-    current_user: Dict[str, Any] = Depends(get_admin_user),
+    current_user: Dict[str, Any] = Depends(get_instructor_user),
     db: Session = Depends(get_db),
 ):
     """Delete a course (draft only)."""
@@ -263,7 +264,7 @@ async def preview_course(
 async def publish_course(
     course_id: str,
     request: CoursePublishRequest,
-    current_user: Dict[str, Any] = Depends(get_admin_user),
+    current_user: Dict[str, Any] = Depends(get_instructor_user),
     db: Session = Depends(get_db),
 ) -> CoursePublishResponse:
     """
@@ -348,7 +349,11 @@ async def list_courses(
 # MODULE ENDPOINTS
 # ============================================================================
 
-@router.post(
+# Retained temporarily for backwards reference only. Dedicated module and lesson
+# routers are the canonical API surface and are the only ones mounted by main.py.
+legacy_content_router = APIRouter(prefix="/api/v1", include_in_schema=False)
+
+@legacy_content_router.post(
     "/modules",
     response_model=ModuleResponse,
     status_code=status.HTTP_201_CREATED,
@@ -385,7 +390,7 @@ async def create_module(
         raise
 
 
-@router.get(
+@legacy_content_router.get(
     "/modules/{module_id}",
     response_model=ModuleResponse,
     status_code=status.HTTP_200_OK,
@@ -430,7 +435,7 @@ async def get_module(
         raise
 
 
-@router.put(
+@legacy_content_router.put(
     "/modules/{module_id}",
     response_model=ModuleResponse,
     status_code=status.HTTP_200_OK,
@@ -467,7 +472,7 @@ async def update_module(
         raise
 
 
-@router.delete(
+@legacy_content_router.delete(
     "/modules/{module_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete module",
@@ -494,7 +499,7 @@ async def delete_module(
 # LESSON ENDPOINTS
 # ============================================================================
 
-@router.post(
+@legacy_content_router.post(
     "/lessons",
     response_model=LessonResponse,
     status_code=status.HTTP_201_CREATED,
@@ -536,7 +541,7 @@ async def create_lesson(
         raise
 
 
-@router.get(
+@legacy_content_router.get(
     "/lessons/{lesson_id}",
     response_model=LessonResponse,
     status_code=status.HTTP_200_OK,
@@ -568,7 +573,7 @@ async def get_lesson(
         raise
 
 
-@router.put(
+@legacy_content_router.put(
     "/lessons/{lesson_id}",
     response_model=LessonResponse,
     status_code=status.HTTP_200_OK,
@@ -610,7 +615,7 @@ async def update_lesson(
         raise
 
 
-@router.delete(
+@legacy_content_router.delete(
     "/lessons/{lesson_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete lesson",
