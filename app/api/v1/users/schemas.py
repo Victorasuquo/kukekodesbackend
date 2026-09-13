@@ -47,7 +47,9 @@ class NotificationPreferencesRequest(BaseModel):
 class UserProfileResponse(BaseModel):
     """User profile response."""
     user_id: str
+    learner_id: str
     email: str
+    contact_email: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     username: Optional[str] = None

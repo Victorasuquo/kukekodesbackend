@@ -4,7 +4,8 @@ from fastapi import HTTPException
 
 from app.config import Settings
 from app.main import app
-from app.security import get_current_admin
+from app.api.v1.auth.service import AuthService
+from app.security import create_access_token, get_current_admin, verify_token
 
 
 def test_openapi_has_canonical_phase0_routes() -> None:
@@ -16,6 +17,12 @@ def test_openapi_has_canonical_phase0_routes() -> None:
         "/readyz",
         "/api/v1/auth/login",
         "/api/v1/auth/register",
+        "/api/v1/auth/session",
+        "/api/v1/auth/recovery/request",
+        "/api/v1/admin/auth/login",
+        "/api/v1/organizations",
+        "/api/v1/organizations/{organization_id}/memberships",
+        "/api/v1/organizations/{organization_id}/memberships/by-learner-id",
         "/api/v1/courses",
         "/api/v1/modules",
         "/api/v1/lessons",
@@ -43,6 +50,35 @@ def test_admin_dependency_rejects_instructors() -> None:
         raise AssertionError("instructors must not pass platform-admin dependency")
 
 
+def test_admin_dependency_requires_admin_audience() -> None:
+    token = create_access_token(
+        user_id="u1",
+        email="admin@example.com",
+        role="admin",
+        audience="learner",
+    )
+    payload = asyncio.run(verify_token(token))
+
+    try:
+        asyncio.run(get_current_admin(payload))
+    except HTTPException as exc:
+        assert exc.status_code == 403
+    else:
+        raise AssertionError("platform admins must use admin-audience sessions")
+
+
+def test_admin_dependency_accepts_admin_audience() -> None:
+    token = create_access_token(
+        user_id="u1",
+        email="admin@example.com",
+        role="admin",
+        audience="admin",
+    )
+    payload = asyncio.run(verify_token(token))
+
+    assert asyncio.run(get_current_admin(payload))["aud"] == "admin"
+
+
 def test_production_config_rejects_development_secrets() -> None:
     try:
         Settings(
@@ -59,3 +95,19 @@ def test_production_config_rejects_development_secrets() -> None:
         assert "Invalid production configuration" in str(exc)
     else:
         raise AssertionError("production settings should reject development defaults")
+
+
+def test_token_hash_is_deterministic_and_not_plaintext() -> None:
+    raw_token = "not-the-value-stored-in-the-database"
+    token_hash = AuthService.token_hash(raw_token)
+
+    assert token_hash == AuthService.token_hash(raw_token)
+    assert token_hash != raw_token
+    assert len(token_hash) == 64
+
+
+def test_recovery_contract_requires_learner_id_and_contact_email() -> None:
+    schema = app.openapi()
+    recovery_schema = schema["components"]["schemas"]["PasswordResetRequest"]
+
+    assert set(recovery_schema["required"]) == {"contact_email", "learner_id"}

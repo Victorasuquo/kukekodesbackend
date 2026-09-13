@@ -32,12 +32,17 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    REFRESH_COOKIE_NAME: str = "kukekodes_refresh"
+    REFRESH_COOKIE_SECURE: bool = False
+    REFRESH_COOKIE_SAMESITE: str = "lax"
     
     # === CORS ===
     CORS_ORIGINS: list = [
         "http://localhost:3000",
+        "http://localhost:5173",
         "http://localhost:8000",
         "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
     ]
     CORS_CREDENTIALS: bool = True
     CORS_METHODS: list = ["*"]
@@ -114,6 +119,8 @@ class Settings(BaseSettings):
             errors.append("MONGODB_URI must point to the production MongoDB deployment")
         if self.AUTO_CREATE_TABLES:
             errors.append("AUTO_CREATE_TABLES must be false in production; use Alembic migrations")
+        if not self.REFRESH_COOKIE_SECURE:
+            errors.append("REFRESH_COOKIE_SECURE must be true in production")
         if not self.REDIS_URL:
             errors.append("REDIS_URL is required in production for rate limits and background jobs")
         if not self.RESEND_API_KEY:

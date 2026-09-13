@@ -57,6 +57,8 @@ def create_access_token(
     role: str,
     expires_delta: Optional[timedelta] = None,
     username: Optional[str] = None,
+    audience: str = "learner",
+    credential_version: int = 1,
 ) -> str:
     """
     Create a JWT access token.
@@ -81,6 +83,8 @@ def create_access_token(
         "email": email,
         "role": role,
         "username": username,
+        "aud": audience,
+        "credential_version": credential_version,
         "exp": expire,
         "iat": datetime.now(timezone.utc),
         "type": "access",
@@ -145,6 +149,7 @@ def decode_token(token: str) -> Dict[str, Any]:
             token,
             settings.JWT_SECRET,
             algorithms=[settings.JWT_ALGORITHM],
+            options={"verify_aud": False},
         )
         return payload
     except JWTError as e:
@@ -163,6 +168,7 @@ async def verify_token(token: str) -> Dict[str, Any]:
             token,
             settings.JWT_SECRET,
             algorithms=[settings.JWT_ALGORITHM],
+            options={"verify_aud": False},
         )
         user_id = payload.get("sub")
         if user_id is None:
@@ -224,7 +230,8 @@ async def get_current_admin(
         HTTPException: If user is not an admin
     """
     role = current_user.get("role")
-    if role != "admin":
+    audience = current_user.get("aud")
+    if role != "admin" or audience != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Administrator access required",

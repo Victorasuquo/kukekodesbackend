@@ -1,262 +1,205 @@
-"""
-Authentication API endpoints.
-"""
+"""Learner authentication API endpoints."""
 
-from fastapi import APIRouter, Depends, status, HTTPException
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Cookie, Depends, Request, Response, status
 from sqlalchemy.orm import Session
-from typing import Dict, Any
-import logging
 
-from app.api.v1.auth.service import AuthService
 from app.api.v1.auth.schemas import (
-    UserRegisterRequest,
-    UserLoginRequest,
     AdminCreateRequest,
-    RefreshTokenRequest,
     AuthResponse,
-    UserResponse,
-    TokenResponse,
+    PasswordResetConfirm,
+    PasswordResetRequest,
     SuccessResponse,
+    TokenResponse,
+    UserLoginRequest,
+    UserRegisterRequest,
+    UserResponse,
 )
-from app.dependencies import (
-    get_db,
-    get_admin_user,
-    ValidationError,
-)
-from app.security import create_access_token, create_refresh_token
+from app.api.v1.auth.service import AuthService
 from app.config import settings
+from app.dependencies import ValidationError, get_admin_user, get_db
+from app.models.identity import SessionAudience
+from app.models.organization import OrganizationMembership, MembershipStatus
+from app.security import get_current_user
 
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
 
-# ============================================================================
-# PUBLIC ENDPOINTS (No authentication required)
-# ============================================================================
+def set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    response.set_cookie(
+        key=settings.REFRESH_COOKIE_NAME,
+        value=refresh_token,
+        httponly=True,
+        secure=settings.REFRESH_COOKIE_SECURE,
+        samesite=settings.REFRESH_COOKIE_SAMESITE,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path="/api/v1/auth",
+    )
 
-@router.post(
-    "/register",
-    response_model=AuthResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Register new user",
-    description="Create a new student account",
-)
+
+def clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(key=settings.REFRESH_COOKIE_NAME, path="/api/v1/auth")
+
+
+def to_auth_response(user, access_token: str, refresh_token: str, message: str) -> AuthResponse:
+    return AuthResponse(
+        user=UserResponse(**AuthService.user_response_payload(user)),
+        token=TokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        ),
+        message=message,
+    )
+
+
+@router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 async def register(
     request: UserRegisterRequest,
+    response: Response,
+    http_request: Request,
     db: Session = Depends(get_db),
 ) -> AuthResponse:
-    """
-    Register a new user account.
-    
-    - **email**: Valid email address
-    - **password**: Minimum 8 characters with uppercase, lowercase, and digit
-    - **first_name**: User's first name
-    - **last_name**: User's last name
-    - **country**: Optional country
-    """
-    try:
-        # Register user
-        user = AuthService.register_user(
-            db=db,
-            email=request.email,
-            password=request.password,
-            first_name=request.first_name,
-            last_name=request.last_name,
-            country=request.country,
-        )
-        
-        # Create tokens
-        access_token = create_access_token(
-            user_id=str(user.id),
-            email=user.email,
-            role=user.role.value,
-        )
-        refresh_token = create_refresh_token(
-            user_id=str(user.id),
-            email=user.email,
-        )
-        
-        return AuthResponse(
-            user=UserResponse(
-                id=user.id,
-                email=user.email,
-                first_name=user.first_name,
-                last_name=user.last_name,
-                username=user.username,
-                profile_picture_url=user.profile_picture_url,
-                country=user.country,
-                role=user.role.value,
-                is_active=user.is_active,
-                created_at=user.created_at.isoformat(),
-            ),
-            token=TokenResponse(
-                access_token=access_token,
-                refresh_token=refresh_token,
-                expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-            ),
-            message="User registered successfully",
-        )
-    
-    except Exception as e:
-        logger.error(f"Registration error: {str(e)}")
-        raise
+    user = AuthService.register_user(
+        db=db,
+        email=request.email,
+        password=request.password,
+        first_name=request.first_name,
+        last_name=request.last_name,
+        country=request.country,
+        is_minor=request.is_minor,
+    )
+    access_token, refresh_token = AuthService.issue_session(
+        db,
+        user,
+        SessionAudience.LEARNER,
+        user_agent=http_request.headers.get("user-agent"),
+        ip_address=http_request.client.host if http_request.client else None,
+    )
+    set_refresh_cookie(response, refresh_token)
+    return to_auth_response(user, access_token, refresh_token, "User registered successfully")
 
 
-@router.post(
-    "/login",
-    response_model=AuthResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Login user",
-    description="Authenticate user and return access token",
-)
+@router.post("/login", response_model=AuthResponse, status_code=status.HTTP_200_OK)
 async def login(
     request: UserLoginRequest,
+    response: Response,
+    http_request: Request,
     db: Session = Depends(get_db),
 ) -> AuthResponse:
-    """
-    Login with email and password.
-    
-    Returns access and refresh tokens.
-    """
-    try:
-        user, access_token, refresh_token = AuthService.login_user(
-            db=db,
-            email=request.email,
-            password=request.password,
-        )
-        
-        return AuthResponse(
-            user=UserResponse(
-                id=user.id,
-                email=user.email,
-                first_name=user.first_name,
-                last_name=user.last_name,
-                username=user.username,
-                profile_picture_url=user.profile_picture_url,
-                country=user.country,
-                role=user.role.value,
-                is_active=user.is_active,
-                created_at=user.created_at.isoformat(),
-            ),
-            token=TokenResponse(
-                access_token=access_token,
-                refresh_token=refresh_token,
-                expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-            ),
-            message="Login successful",
-        )
-    
-    except ValidationError:
-        raise
-    except Exception as e:
-        logger.error(f"Login error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Login failed",
-        )
+    user = AuthService.authenticate_by_learner_id(db, request.learner_id, request.password)
+    access_token, refresh_token = AuthService.issue_session(
+        db,
+        user,
+        SessionAudience.LEARNER,
+        user_agent=http_request.headers.get("user-agent"),
+        ip_address=http_request.client.host if http_request.client else None,
+    )
+    set_refresh_cookie(response, refresh_token)
+    return to_auth_response(user, access_token, refresh_token, "Login successful")
 
 
-@router.post(
-    "/refresh-token",
-    response_model=TokenResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Refresh access token",
-    description="Get a new access token using refresh token",
-)
+@router.post("/refresh", response_model=TokenResponse, status_code=status.HTTP_200_OK)
+@router.post("/refresh-token", response_model=TokenResponse, status_code=status.HTTP_200_OK, include_in_schema=False)
 async def refresh_token(
-    request: RefreshTokenRequest,
+    response: Response,
+    request_refresh_token: Optional[str] = Cookie(default=None, alias=settings.REFRESH_COOKIE_NAME),
     db: Session = Depends(get_db),
 ) -> TokenResponse:
-    """
-    Get a new access token using a valid refresh token.
-    """
-    try:
-        access_token = AuthService.refresh_access_token(db, request.refresh_token)
-        
-        return TokenResponse(
-            access_token=access_token,
-            refresh_token=request.refresh_token,
-            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        )
-    
-    except ValidationError:
-        raise
-    except Exception as e:
-        logger.error(f"Token refresh error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token",
-        )
+    if not request_refresh_token:
+        raise ValidationError("Refresh token is required")
+    access_token, refresh_token = AuthService.refresh_session(db, request_refresh_token, SessionAudience.LEARNER)
+    set_refresh_cookie(response, refresh_token)
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
 
 
-# ============================================================================
-# ADMIN-ONLY ENDPOINTS
-# ============================================================================
+@router.post("/logout", response_model=SuccessResponse, status_code=status.HTTP_200_OK)
+async def logout(
+    response: Response,
+    request_refresh_token: Optional[str] = Cookie(default=None, alias=settings.REFRESH_COOKIE_NAME),
+    db: Session = Depends(get_db),
+) -> SuccessResponse:
+    AuthService.revoke_refresh_session(db, request_refresh_token)
+    clear_refresh_cookie(response)
+    return SuccessResponse(success=True, message="Logout successful")
 
-@router.post(
-    "/admin/create",
-    response_model=UserResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create admin user",
-    description="Create a new admin account (admin only)",
-)
+
+@router.post("/logout-all", response_model=SuccessResponse, status_code=status.HTTP_200_OK)
+async def logout_all(
+    response: Response,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SuccessResponse:
+    AuthService.revoke_all_sessions(db, current_user.get("sub"))
+    clear_refresh_cookie(response)
+    return SuccessResponse(success=True, message="All sessions revoked")
+
+
+@router.post("/recovery/request", response_model=SuccessResponse, status_code=status.HTTP_200_OK)
+async def request_recovery(
+    request: PasswordResetRequest,
+    db: Session = Depends(get_db),
+) -> SuccessResponse:
+    AuthService.request_password_recovery(db, request.contact_email, request.learner_id)
+    return SuccessResponse(
+        success=True,
+        message="If the learner ID and contact email match, recovery instructions will be sent.",
+    )
+
+
+@router.post("/recovery/confirm", response_model=SuccessResponse, status_code=status.HTTP_200_OK)
+async def confirm_recovery(
+    request: PasswordResetConfirm,
+    db: Session = Depends(get_db),
+) -> SuccessResponse:
+    AuthService.confirm_password_recovery(db, request.token, request.new_password)
+    return SuccessResponse(success=True, message="Password reset successfully")
+
+
+@router.get("/session", response_model=Dict[str, Any], status_code=status.HTTP_200_OK)
+async def session(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    user = AuthService.get_user_by_id(db, current_user.get("sub"))
+    if not user or not user.is_active:
+        raise ValidationError("Session is no longer valid")
+    memberships = db.query(OrganizationMembership).filter(
+        OrganizationMembership.user_id == user.id,
+        OrganizationMembership.status == MembershipStatus.ACTIVE,
+    ).all()
+    return {
+        "user": AuthService.user_response_payload(user),
+        "memberships": [
+            {
+                "organization_id": str(m.organization_id),
+                "role": m.role.value,
+                "status": m.status.value,
+                "joined_at": m.joined_at.isoformat(),
+            }
+            for m in memberships
+        ],
+    }
+
+
+@router.post("/admin/create", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_admin(
     request: AdminCreateRequest,
     current_admin: Dict[str, Any] = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ) -> UserResponse:
-    """
-    Create a new admin user account.
-    
-    Only existing admins can perform this action.
-    """
-    try:
-        admin_user = AuthService.create_admin(
-            db=db,
-            email=request.email,
-            password=request.password,
-            first_name=request.first_name,
-            last_name=request.last_name,
-            by_admin_id=current_admin.get("sub"),
-        )
-        
-        return UserResponse(
-            id=admin_user.id,
-            email=admin_user.email,
-            first_name=admin_user.first_name,
-            last_name=admin_user.last_name,
-            username=admin_user.username,
-            profile_picture_url=admin_user.profile_picture_url,
-            country=admin_user.country,
-            role=admin_user.role.value,
-            is_active=admin_user.is_active,
-            created_at=admin_user.created_at.isoformat(),
-        )
-    
-    except Exception as e:
-        logger.error(f"Admin creation error: {str(e)}")
-        raise
-
-
-@router.post(
-    "/logout",
-    response_model=SuccessResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Logout user",
-    description="Logout current user (invalidate tokens)",
-)
-async def logout(
-    current_user: Dict[str, Any] = Depends(lambda: None),
-) -> SuccessResponse:
-    """
-    Logout user.
-    
-    Note: JWT tokens are stateless, so actual logout is handled client-side
-    by removing the tokens. This endpoint is for symmetry and future use
-    (e.g., token blacklist).
-    """
-    return SuccessResponse(
-        success=True,
-        message="Logout successful. Please clear tokens on client-side.",
+    admin_user = AuthService.create_admin(
+        db=db,
+        email=request.email,
+        password=request.password,
+        first_name=request.first_name,
+        last_name=request.last_name,
+        by_admin_id=current_admin.get("sub"),
     )
+    return UserResponse(**AuthService.user_response_payload(admin_user))

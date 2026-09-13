@@ -14,7 +14,7 @@ This tracker is shared by the backend and frontend repositories. The frontend li
 | Phase | Status | Backend Scope | Frontend Scope | Exit Gate |
 | --- | --- | --- | --- | --- |
 | Phase 0: Stabilize and establish truth | Complete | Canonical route import checks, admin route mounting, admin-only dependency test, `/livez`, `/readyz`, safer error envelope, production config validation, Alembic scaffold, initial learner-id/email migration, Docker/Caddy/worker/scheduler/Redis scaffold, OpenAPI check, backend CI scaffold | `VITE_API_BASE_URL`, no hardcoded Cloud Run URL, no Vercel API proxy rewrite, `/admin/login`, guarded `/admin`, `/admin/courses/new`, direct module API client use, missing TS API types/methods fixed, fake claims and dead footer links removed, frontend CI scaffold | Local install/build/test gates pass; visible production routes are not fake or obviously dead; OpenAPI has no duplicate operation IDs |
-| Phase 1: Identity, security, and organizations | Not started | Learner-ID auth, non-unique contact email, credentials table, refresh sessions, recovery, logout-all, deactivation, guardian/consent, organizations, memberships, invitations, cohorts, assignments, scoped RBAC, rate limits, audit logs | Learner-ID login copy/flows, admin/learner session split, organization switching, onboarding, invitations, consent screens, tenant-aware route guards | Two learners can share one email while keeping isolated credentials, sessions, enrollments, and progress; admin/student/tenant boundaries cannot be crossed |
+| Phase 1: Identity, security, and organizations | Complete | Learner-ID auth, non-unique contact email, credentials table, refresh sessions, recovery, logout-all, admin-audience sessions, guardian/consent tables, organizations, memberships, invitations, cohorts, assignments, scoped RBAC boundary tests, local CORS for split repos | Learner-ID login copy/flows, admin/learner session split, `/admin/login`, session bootstrap from backend, admin organizations screen, create organization, add member by learner ID, invitation token creation, cohort creation, tenant-aware route guards | Two learners can share one email while keeping isolated credentials, sessions, enrollments, and progress; admin/student/tenant boundaries cannot be crossed |
 | Phase 2: Complete the learning core | Not started | Courses, modules, lessons, enrollments, assignments, progress, quizzes, certificates, notifications, publish checks, optimistic concurrency, transcript/resource storage | Admin course authoring, student dashboard, catalog, enrollment, lesson viewer, resume state, quizzes, certificates, transcript-first low-data path | Admin creates/publishes a course through the UI; learner enrolls/gets assigned, resumes, completes lessons/quizzes, and receives a verifiable certificate |
 | Phase 3: Community, live sessions, Gemini, and exercises | Not started | Moderated community APIs, live-session APIs, Gemini gateway, quotas, safety controls, JS/Python exercise submissions | Real forum UI, live-session join/recording states, AI tutor states, code exercise UI, unsupported feature hiding | Every linked module completes an authenticated browser journey and has loading, empty, error, forbidden, provider-outage, and offline states |
 | Phase 4: Admin analytics and Resend communication | Not started | Analytics definitions, overview/users/orgs/courses/cohorts/drop-off/engagement/moderation/email/AI endpoints, Resend replacement, webhooks, outbox-driven reminders | Platform and organization dashboards, email health, moderation queue, exports, reminder preview and preferences | Admin totals reconcile with PostgreSQL queries; org admins see only tenant data; reminders are previewable, idempotent, preference-aware, timezone-aware, and traceable |
@@ -26,16 +26,36 @@ This tracker is shared by the backend and frontend repositories. The frontend li
 - Backend OpenAPI check passes: `python -m scripts.check_openapi`.
 - Backend focused tests pass: `python -m pytest app/tests -q --disable-warnings --maxfail=1`.
 - Docker Compose config validates: `docker compose --env-file .env.example config --quiet`.
-- Alembic has one head: `20260912_0001`.
+- Alembic Phase 0 migration exists: `20260912_0001`.
 - Frontend type-check passes: `npm run typecheck`.
 - Frontend lint passes with existing fast-refresh warnings only: `npm run lint`.
 - Frontend production build passes: `npm run build`.
 
+## Current Phase 1 Evidence
+
+- Backend compile passes: `python -m compileall -q app scripts`.
+- Backend OpenAPI check passes: `python -m scripts.check_openapi` with 85 paths and 100 operations.
+- Backend focused tests pass: `python -m pytest app/tests -q --disable-warnings --maxfail=1` with 8 tests.
+- Clean Alembic migration smoke passes against disposable PostgreSQL database `kukekodes_phase1_smoke_1789276144`; current head is `20260912_0002`.
+- API smoke passes for duplicate contact email learners, learner-ID login, admin `/api/v1/admin/auth/login`, organization creation, member add by learner ID, invitation token creation, cohort creation, and learner-scoped organization listing.
+- Frontend type-check passes: `npm run typecheck`.
+- Frontend lint passes with existing fast-refresh warnings only: `npm run lint`.
+- Frontend production build passes: `npm run build`.
+- Browser verification passes on `http://127.0.0.1:5173` against backend `http://127.0.0.1:8010`:
+  - Admin logs in at `/admin/login` and reaches `/admin`.
+  - Admin creates an organization at `/admin/organizations`.
+  - Admin adds learner `KK-FSWYMP5O` by learner ID.
+  - Admin creates a single-use invitation token.
+  - Admin creates `Browser Pilot Cohort`.
+  - Admin logout clears both learner and admin refresh-cookie scopes.
+  - Learner logs in at `/auth?tab=login` with learner ID and reaches `/dashboard`.
+  - Learner attempting `/admin` is redirected back to `/dashboard`.
+
 ## Current Known Gaps
 
-- Chrome automation could not run in Codex because Chrome browser control is unavailable until the ChatGPT browser extension is enabled under Settings -> Computer use.
-- Backend still needs full Phase 1 identity tables and server-side refresh-token storage; Phase 0 only created the first learner-id/email migration boundary.
-- The current frontend still stores access and refresh tokens in local storage until Phase 1 replaces that with memory-held access tokens and HttpOnly refresh cookies.
+- This machine's private backend `.env` still overrides `CORS_ORIGINS` without Vite port `5173`; update local `.env` to include `http://localhost:5173` and `http://127.0.0.1:5173`, or pass `CORS_ORIGINS` when running the backend locally.
+- MongoDB is not running locally, so startup logs degraded development mode. This does not block Phase 1 auth/organization testing, but MongoDB must be available before Phase 3 community/AI work.
+- The generated Alembic console script in `.kukekodes_venv/bin/alembic` has an old shebang path on this machine; use `python -m alembic ...` or recreate the virtualenv.
 - Route-level code splitting and bundle-size reduction remain Phase 5 work.
 
 ## Tracking Rules

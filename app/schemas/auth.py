@@ -24,6 +24,7 @@ class UserRegisterRequest(BaseModel):
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
     country: Optional[str] = Field(None, max_length=100)
+    is_minor: bool = Field(False, description="Minor self-registration is not allowed")
     
     @validator("password")
     def validate_password(cls, v):
@@ -49,12 +50,12 @@ class UserRegisterRequest(BaseModel):
 class UserLoginRequest(BaseModel):
     """User login request."""
     
-    email: EmailStr = Field(..., description="User email address")
+    learner_id: str = Field(..., min_length=3, max_length=32, description="Generated learner ID")
     password: str = Field(..., description="Password")
     
     class Config:
         example = {
-            "email": "user@example.com",
+            "learner_id": "KK-1234ABCD",
             "password": "MyPassword123",
         }
 
@@ -79,10 +80,11 @@ class AdminCreateRequest(BaseModel):
 class PasswordResetRequest(BaseModel):
     """Password reset request (step 1: request token)."""
     
-    email: EmailStr
+    contact_email: EmailStr
+    learner_id: str = Field(..., min_length=3, max_length=32)
     
     class Config:
-        example = {"email": "user@example.com"}
+        example = {"contact_email": "shared@example.com", "learner_id": "KK-1234ABCD"}
 
 
 class PasswordResetConfirm(BaseModel):
@@ -124,6 +126,8 @@ class UserResponse(BaseModel):
     """User response (minimal)."""
     
     id: UUID
+    learner_id: str
+    contact_email: Optional[str] = None
     email: str
     first_name: str
     last_name: str

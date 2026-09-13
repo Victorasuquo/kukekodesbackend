@@ -36,7 +36,9 @@ class UserService:
         
         return {
             "user_id": user_id,
-            "email": user.email,
+            "learner_id": user.learner_id,
+            "email": user.contact_email or user.email,
+            "contact_email": user.contact_email or user.email,
             "first_name": user.first_name,
             "last_name": user.last_name,
             "username": user.username,

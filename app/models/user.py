@@ -33,7 +33,8 @@ class User(Base):
     )
     
     # === AUTHENTICATION ===
-    learner_id = Column(String(32), unique=True, nullable=True, index=True)
+    learner_id = Column(String(32), unique=True, nullable=False, index=True)
+    contact_email = Column(String(255), nullable=True, index=True)
     email = Column(String(255), nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     
@@ -74,10 +75,14 @@ class User(Base):
     badge_awards = relationship("BadgeAward", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     notification_preferences = relationship("NotificationPreference", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    credential = relationship("Credential", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    refresh_sessions = relationship("RefreshSession", back_populates="user", cascade="all, delete-orphan")
+    organization_memberships = relationship("OrganizationMembership", back_populates="user", cascade="all, delete-orphan")
     
     # === INDEXES ===
     __table_args__ = (
         Index("idx_user_email_active", "email", "is_active"),
+        Index("idx_user_contact_email_active", "contact_email", "is_active"),
         Index("idx_user_learner_id_active", "learner_id", "is_active"),
         Index("idx_user_role", "role"),
         Index("idx_user_created_at", "created_at"),

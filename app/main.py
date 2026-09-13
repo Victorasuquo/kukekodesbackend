@@ -51,7 +51,9 @@ async def lifespan(app: FastAPI):
     
     except Exception as e:
         logger.error(f"Startup error: {str(e)}")
-        raise
+        if settings.is_production:
+            raise
+        logger.warning("Continuing startup in degraded development mode")
     
     yield
     
@@ -233,6 +235,7 @@ from app.api.v1.admin.routes import router as admin_router
 from app.api.v1.courses.routes import router as courses_router
 from app.api.v1.modules.routes import router as modules_router
 from app.api.v1.lessons.routes import router as lessons_router
+from app.api.v1.organizations.routes import router as organizations_router
 from app.api.v1.enrollments.routes import router as enrollments_router
 from app.api.v1.progress.routes import router as progress_router
 from app.api.v1.users.routes import router as users_router
@@ -246,6 +249,7 @@ app.include_router(admin_router)
 app.include_router(courses_router)
 app.include_router(modules_router)
 app.include_router(lessons_router)
+app.include_router(organizations_router)
 app.include_router(enrollments_router)
 app.include_router(progress_router)
 app.include_router(users_router)
