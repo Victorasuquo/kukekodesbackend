@@ -1,4 +1,5 @@
 import time
+from datetime import datetime, timedelta
 from typing import Any, Dict
 import httpx
 from fastapi import APIRouter, Depends
@@ -11,13 +12,13 @@ from app.models.course import Lesson
 from sqlalchemy.orm import Session
 
 router=APIRouter(prefix="/api/v1/ai",tags=["AI coach"])
-_usage:dict[str,list[float]]={}
 @router.post("/coach",response_model=CoachResponse)
 async def coach(payload:CoachRequest,current_user:Dict[str,Any]=Depends(get_student_user),db:Session=Depends(get_db)):
-    uid=str(current_user["sub"]); now=time.time(); recent=[t for t in _usage.get(uid,[]) if now-t<86400]
-    if len(recent)>=50: return CoachResponse(answer="You have reached today's AI coach limit. Continue with the lesson transcript and try again tomorrow.",degraded=True,remaining_quota=0)
-    recent.append(now); _usage[uid]=recent
-    if not settings.GEMINI_API_KEY: return CoachResponse(answer="AI coach is temporarily unavailable. Please use the lesson transcript or try again later.",degraded=True,remaining_quota=50-len(recent))
+    uid=str(current_user["sub"]); now=datetime.utcnow(); recent_count=0
+    try: recent_count=get_mongodb().ai_interactions.count_documents({"user_id":uid,"timestamp":{"$gte":now-timedelta(days=1)}})
+    except Exception: recent_count=0
+    if recent_count>=50: return CoachResponse(answer="You have reached today's AI coach limit. Continue with the lesson transcript and try again tomorrow.",degraded=True,remaining_quota=0)
+    if not settings.GEMINI_API_KEY: return CoachResponse(answer="AI coach is temporarily unavailable. Please use the lesson transcript or try again later.",degraded=True,remaining_quota=50-recent_count)
     url=f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent?key={settings.GEMINI_API_KEY}"
     question=payload.prompt or payload.message or ""
     context=payload.context
@@ -41,6 +42,13 @@ async def coach(payload:CoachRequest,current_user:Dict[str,Any]=Depends(get_stud
         answer=data["candidates"][0]["content"]["parts"][0]["text"]
         try: insert_ai_interaction(uid,payload.lesson_id or "",question,answer,metadata={"course_id":payload.course_id})
         except Exception: pass
-        return CoachResponse(answer=answer,remaining_quota=50-len(recent))
+        return CoachResponse(answer=answer,remaining_quota=49-recent_count)
     except Exception:
-        return CoachResponse(answer="AI coach is temporarily unavailable. Please use the lesson transcript or try again later.",degraded=True,remaining_quota=50-len(recent))
+        return CoachResponse(answer="AI coach is temporarily unavailable. Please use the lesson transcript or try again later.",degraded=True,remaining_quota=50-recent_count)
+
+@router.get("/conversations")
+async def conversations(lesson_id: str, current_user:Dict[str,Any]=Depends(get_student_user)):
+    try:
+        docs=get_mongodb().ai_interactions.find({"user_id":str(current_user["sub"]),"lesson_id":lesson_id}).sort("timestamp",1).limit(50)
+        return [{"role":role,"content":content,"timestamp":d.get("timestamp")} for d in docs for role,content in (("user",d.get("question","")),("assistant",d.get("response","")))]
+    except Exception: return []
