@@ -83,7 +83,6 @@ class LessonResponse(BaseModel):
     status: str
     created_at: str
     version: int = 1
-    lesson_count: int = 0
     
     class Config:
         from_attributes = True
@@ -202,6 +201,7 @@ class CourseResponse(BaseModel):
     created_at: str
     published_at: Optional[str]
     version: int = 1
+    lesson_count: int = 0
     
     class Config:
         from_attributes = True
