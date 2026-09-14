@@ -337,6 +337,7 @@ async def list_courses(
                     total_enrollments=c.total_enrollments,
                     created_at=c.created_at.isoformat(),
                     published_at=c.published_at.isoformat() if c.published_at else None,
+                    lesson_count=sum(len(m.lessons) for m in getattr(c, "modules", [])),
                 )
                 for c in courses
             ],
