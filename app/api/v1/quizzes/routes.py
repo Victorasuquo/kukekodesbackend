@@ -15,6 +15,7 @@ from app.api.v1.quizzes.schemas import (
 from app.api.v1.quizzes.service import QuizService
 from app.db.postgres import get_db
 from app.dependencies import get_instructor_user, get_student_user
+from app.models.assessment import QuizAttempt
 
 
 router = APIRouter(prefix="/api/v1/quizzes", tags=["Quizzes"])
@@ -69,3 +70,9 @@ async def submit_quiz_attempt(
     db: Session = Depends(get_db),
 ):
     return QuizService.submit(db, quiz_id, current_user.get("sub"), request.answers)
+
+@router.get("/{quiz_id}/attempts/latest")
+async def latest_quiz_attempt(quiz_id: str, current_user: Dict[str, Any] = Depends(get_student_user), db: Session = Depends(get_db)):
+    attempt = db.query(QuizAttempt).filter(QuizAttempt.quiz_id == QuizService._uuid(quiz_id), QuizAttempt.user_id == QuizService._uuid(current_user.get("sub"))).order_by(QuizAttempt.submitted_at.desc()).first()
+    if not attempt: return None
+    return {"id": str(attempt.id), "quiz_id": str(attempt.quiz_id), "score": attempt.score, "passed": attempt.passed, "answers": attempt.answers, "submitted_at": attempt.submitted_at}
