@@ -9,6 +9,7 @@ import logging
 
 from app.api.v1.admin.service import AdminService
 from app.models.course import Course
+from app.config import settings
 from app.dependencies import (
     get_db,
     get_admin_user,
@@ -19,6 +20,20 @@ from app.dependencies import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin Dashboard"])
+
+
+@router.get("/email/health", response_model=Dict[str, Any], summary="Email provider configuration health")
+async def get_email_health(
+    current_admin: Dict[str, Any] = Depends(get_admin_user),
+) -> Dict[str, Any]:
+    """Expose safe Resend configuration health without returning secrets."""
+    return {
+        "provider": "resend",
+        "configured": bool(settings.RESEND_API_KEY and settings.RESEND_FROM_EMAIL),
+        "from_email": settings.RESEND_FROM_EMAIL,
+        "webhook_configured": bool(settings.RESEND_WEBHOOK_SECRET),
+        "status": "ready" if settings.RESEND_API_KEY else "not_configured",
+    }
 
 
 @router.get("/courses", response_model=Dict[str, Any], summary="List all courses for administration")
