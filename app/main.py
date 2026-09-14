@@ -191,9 +191,20 @@ async def readyz():
         checks["mongodb"] = "failed"
         overall_status = status.HTTP_503_SERVICE_UNAVAILABLE
 
-    checks["redis"] = "configured" if settings.REDIS_URL else "missing"
-    if settings.is_production and not settings.REDIS_URL:
-        overall_status = status.HTTP_503_SERVICE_UNAVAILABLE
+    if settings.REDIS_URL:
+        try:
+            import redis
+            redis.Redis.from_url(settings.REDIS_URL, socket_connect_timeout=2).ping()
+            checks["redis"] = "ok"
+        except Exception as exc:
+            logger.warning("Redis readiness check failed: %s", exc)
+            checks["redis"] = "failed"
+            if settings.is_production:
+                overall_status = status.HTTP_503_SERVICE_UNAVAILABLE
+    else:
+        checks["redis"] = "missing"
+        if settings.is_production:
+            overall_status = status.HTTP_503_SERVICE_UNAVAILABLE
 
     checks["configuration"] = "ok"
     payload = {
