@@ -16,7 +16,8 @@ async def coach(payload:CoachRequest,current_user:Dict[str,Any]=Depends(get_stud
     if not settings.GEMINI_API_KEY: return CoachResponse(answer="AI coach is temporarily unavailable. Please use the lesson transcript or try again later.",degraded=True,remaining_quota=50-len(recent))
     url=f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent?key={settings.GEMINI_API_KEY}"
     question=payload.prompt or payload.message or ""
-    body={"contents":[{"parts":[{"text":f"You are a careful course tutor. Answer only using the learner's course context.\n\nQuestion: {question}"}]}],"generationConfig":{"maxOutputTokens":800}}
+    context=(payload.context or "No course context was provided.")[:12000]
+    body={"contents":[{"parts":[{"text":f"You are a careful course tutor. Answer only using the learner's course context below. If it does not contain the answer, say so.\n\nCourse context:\n{context}\n\nQuestion: {question}"}]}],"generationConfig":{"maxOutputTokens":800}}
     try:
         async with httpx.AsyncClient(timeout=settings.EXTERNAL_API_TIMEOUT) as client:
             response=await client.post(url,json=body); response.raise_for_status(); data=response.json()
