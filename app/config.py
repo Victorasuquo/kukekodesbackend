@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     CLOUDINARY_API_SECRET: str = ""
     
     GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     
     # === EMAIL SETTINGS ===
     EMAIL_VERIFICATION_REQUIRED: bool = False
