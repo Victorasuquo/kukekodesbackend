@@ -242,6 +242,10 @@ from app.api.v1.users.routes import router as users_router
 from app.api.v1.gamification.routes import router as gamification_router
 from app.api.v1.notifications.routes import router as notifications_router
 from app.api.v1.quizzes.routes import router as quizzes_router
+from app.api.v1.community.routes import router as community_router
+from app.api.v1.ai.routes import router as ai_router
+from app.api.v1.live.routes import router as live_router
+from app.api.v1.exercises.routes import router as exercises_router
 
 # Include routers
 app.include_router(auth_router)
@@ -256,6 +260,10 @@ app.include_router(progress_router)
 app.include_router(users_router)
 app.include_router(gamification_router)
 app.include_router(quizzes_router)
+app.include_router(community_router)
+app.include_router(ai_router)
+app.include_router(live_router)
+app.include_router(exercises_router)
 app.include_router(notifications_router)
 
 

@@ -38,12 +38,10 @@ from app.models.progress import Streak, Badge, BadgeAward, Leaderboard
 # Notification models
 from app.models.notification import Notification, NotificationPreference, NotificationType
 from app.models.assessment import Certificate, Quiz, QuizAnswer, QuizAttempt, QuizQuestion
+from app.models.phase3 import LiveSession, LiveSessionAttendance, CodeExercise, CodeSubmission
 
 # Community models (if exists)
-try:
-    from app.models.community import ForumThread, ForumReply
-except ImportError:
-    pass
+from app.models.community import CommunityReport, CommunityBlock
 
 __all__ = [
     # User
@@ -92,4 +90,7 @@ __all__ = [
     "QuizAnswer",
     "QuizAttempt",
     "Certificate",
+    "CommunityReport",
+    "CommunityBlock",
+    "LiveSession", "LiveSessionAttendance", "CodeExercise", "CodeSubmission",
 ]
