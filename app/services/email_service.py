@@ -3,8 +3,7 @@ Email service using SendGrid for notifications.
 Handles welcome emails, completion notifications, reminders, etc.
 """
 
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail, Email, To, Content, HtmlContent
+import httpx
 from typing import Optional, List, Dict, Any
 import logging
 from abc import ABC, abstractmethod
@@ -314,11 +313,8 @@ class EmailService:
     
     def __init__(self):
         """Initialize SendGrid client."""
-        if not settings.SENDGRID_API_KEY:
-            logger.warning("SENDGRID_API_KEY not configured. Email sending will be disabled.")
-        
-        self.sg = SendGridAPIClient(settings.SENDGRID_API_KEY) if settings.SENDGRID_API_KEY else None
-        self.from_email = settings.SENDGRID_FROM_EMAIL
+        self.api_key = settings.RESEND_API_KEY
+        self.from_email = settings.RESEND_FROM_EMAIL
     
     def send_email(
         self,
@@ -341,30 +337,17 @@ class EmailService:
         Returns:
             True if sent successfully, False otherwise
         """
-        if not self.sg:
+        if not self.api_key:
             logger.warning(f"Email service not configured. Skipping email to {to_email}")
             return False
         
         try:
-            mail = Mail(
-                from_email=Email(self.from_email),
-                to_emails=To(to_email),
-                subject=subject,
-                plain_text_content=Content("text/plain", text_content or ""),
-                html_content=HtmlContent(html_content),
-            )
-            
-            if reply_to:
-                mail.reply_to = Email(reply_to)
-            
-            response = self.sg.send(mail)
-            
-            if response.status_code in [200, 201, 202]:
-                logger.info(f"Email sent successfully to {to_email}")
-                return True
-            else:
-                logger.error(f"Failed to send email to {to_email}: {response.status_code}")
-                return False
+            payload = {"from": self.from_email, "to": [to_email], "subject": subject, "html": html_content, "text": text_content or ""}
+            if reply_to: payload["reply_to"] = reply_to
+            response = httpx.post("https://api.resend.com/emails", headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}, json=payload, timeout=settings.EXTERNAL_API_TIMEOUT)
+            response.raise_for_status()
+            logger.info("Email sent successfully", extra={"provider": "resend", "recipient": to_email, "provider_id": response.json().get("id")})
+            return True
         
         except Exception as e:
             logger.error(f"Error sending email to {to_email}: {str(e)}")
