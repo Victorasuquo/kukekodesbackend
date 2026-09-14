@@ -27,4 +27,8 @@ celery_app.conf.update(
     task_serializer="json",
     timezone="UTC",
     worker_prefetch_multiplier=1,
+    beat_schedule={
+        "weekly-progress-reminders": {"task": "kukekodes.process-weekly-reminders", "schedule": 86400.0},
+        "process-outbox": {"task": "kukekodes.process-outbox", "schedule": 30.0},
+    },
 )

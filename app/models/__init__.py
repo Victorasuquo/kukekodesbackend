@@ -42,6 +42,7 @@ from app.models.phase3 import LiveSession, LiveSessionAttendance, CodeExercise, 
 
 # Community models (if exists)
 from app.models.community import CommunityReport, CommunityBlock
+from app.models.outbox import OutboxEvent
 
 __all__ = [
     # User
@@ -91,6 +92,7 @@ __all__ = [
     "QuizAttempt",
     "Certificate",
     "CommunityReport",
+    "OutboxEvent",
     "CommunityBlock",
     "LiveSession", "LiveSessionAttendance", "CodeExercise", "CodeSubmission",
 ]
