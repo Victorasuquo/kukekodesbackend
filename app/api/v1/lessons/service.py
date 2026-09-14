@@ -10,7 +10,7 @@ import logging
 import re
 
 from app.models.course import Course, Module, Lesson, LessonStatus
-from app.utils.exceptions import NotFoundError, ValidationError
+from app.utils.exceptions import ConflictError, NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,7 @@ class LessonService:
         youtube_url: Optional[str] = None,
         duration_minutes: Optional[int] = None,
         resources: Optional[Dict] = None,
+        transcript: Optional[str] = None,
         order: Optional[int] = None,
         status: LessonStatus = LessonStatus.DRAFT,
     ) -> Lesson:
@@ -87,6 +88,7 @@ class LessonService:
             youtube_video_id=youtube_video_id,
             duration_minutes=duration_minutes,
             resources=resources,
+            transcript=transcript,
             order=order,
             status=status,
         )
@@ -115,11 +117,15 @@ class LessonService:
         youtube_url: Optional[str] = None,
         duration_minutes: Optional[int] = None,
         resources: Optional[Dict] = None,
+        transcript: Optional[str] = None,
         order: Optional[int] = None,
         status: Optional[LessonStatus] = None,
+        expected_version: Optional[int] = None,
     ) -> Lesson:
         """Update a lesson."""
         lesson = LessonService.get_lesson(db, lesson_id)
+        if expected_version is not None and lesson.version != expected_version:
+            raise ConflictError("Lesson was changed by another request; reload before saving")
         
         if title:
             lesson.title = title
@@ -132,10 +138,13 @@ class LessonService:
             lesson.duration_minutes = duration_minutes
         if resources is not None:
             lesson.resources = resources
+        if transcript is not None:
+            lesson.transcript = transcript
         if order is not None:
             lesson.order = order
         if status is not None:
             lesson.status = status
+        lesson.version += 1
         
         db.commit()
         db.refresh(lesson)
@@ -228,6 +237,8 @@ class LessonService:
             "youtube_url": lesson.youtube_url,
             "youtube_video_id": lesson.youtube_video_id,
             "duration_minutes": lesson.duration_minutes,
+            "thumbnail_url": lesson.thumbnail_url,
+            "transcript": lesson.transcript,
             "resources": lesson.resources,
             "order": lesson.order,
             "status": lesson.status.value,

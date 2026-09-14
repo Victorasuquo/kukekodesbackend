@@ -3,7 +3,7 @@ Pydantic models for course, module, and lesson endpoints.
 """
 
 from pydantic import BaseModel, Field, validator, HttpUrl
-from typing import Optional, List
+from typing import Any, Dict, Optional, List
 from uuid import UUID
 from enum import Enum
 
@@ -39,6 +39,9 @@ class LessonCreateRequest(BaseModel):
     title: str = Field(..., min_length=3, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
     youtube_url: str = Field(..., description="Full YouTube URL")
+    duration_minutes: Optional[int] = Field(None, ge=0)
+    transcript: Optional[str] = None
+    resources: Optional[Dict[str, Any]] = None
     order: int = Field(..., ge=1, description="Order within module")
     
     class Config:
@@ -56,7 +59,11 @@ class LessonUpdateRequest(BaseModel):
     title: Optional[str] = Field(None, min_length=3, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
     youtube_url: Optional[str] = None
+    duration_minutes: Optional[int] = Field(None, ge=0)
+    transcript: Optional[str] = None
+    resources: Optional[Dict[str, Any]] = None
     order: Optional[int] = Field(None, ge=1)
+    expected_version: Optional[int] = Field(None, ge=1)
 
 
 class LessonResponse(BaseModel):
@@ -70,9 +77,12 @@ class LessonResponse(BaseModel):
     youtube_video_id: Optional[str]
     duration_minutes: Optional[int]
     thumbnail_url: Optional[str]
+    transcript: Optional[str] = None
+    resources: Optional[Dict[str, Any]] = None
     order: int
     status: str
     created_at: str
+    version: int = 1
     
     class Config:
         from_attributes = True
@@ -81,8 +91,8 @@ class LessonResponse(BaseModel):
 class LessonDetailResponse(LessonResponse):
     """Lesson response with full details."""
     
-    transcript: Optional[str]
-    resources: Optional[dict]
+    transcript: Optional[str] = None
+    resources: Optional[dict] = None
 
 
 # ============================================================================
@@ -110,6 +120,7 @@ class ModuleUpdateRequest(BaseModel):
     title: Optional[str] = Field(None, min_length=3, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
     order: Optional[int] = Field(None, ge=1)
+    expected_version: Optional[int] = Field(None, ge=1)
 
 
 class ModuleResponse(BaseModel):
@@ -122,6 +133,7 @@ class ModuleResponse(BaseModel):
     order: int
     lessons: List[LessonResponse] = []
     created_at: str
+    version: int = 1
     
     class Config:
         from_attributes = True
@@ -170,6 +182,7 @@ class CourseUpdateRequest(BaseModel):
     is_free: Optional[bool] = None
     is_featured: Optional[bool] = None
     cover_image_url: Optional[str] = None
+    expected_version: Optional[int] = Field(None, ge=1)
 
 
 class CourseResponse(BaseModel):
@@ -187,6 +200,7 @@ class CourseResponse(BaseModel):
     total_enrollments: int
     created_at: str
     published_at: Optional[str]
+    version: int = 1
     
     class Config:
         from_attributes = True

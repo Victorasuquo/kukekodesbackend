@@ -44,25 +44,17 @@ class EnrollmentResponse(BaseModel):
         from_attributes = True
 
 
-class EnrollmentListItem(BaseModel):
-    """Enrollment item in list."""
-    id: UUID
-    course_id: UUID
-    course_title: str
-    course_cover_url: Optional[str] = None
-    enrolled_at: datetime
-    is_completed: bool
-    completion_percentage: float
-    completed_at: Optional[datetime] = None
+class PaginationMeta(BaseModel):
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
 
 
 class UserEnrollmentsResponse(BaseModel):
-    """List of user's enrollments."""
-    user_id: UUID
-    total_enrollments: int
-    in_progress_count: int
-    completed_count: int
-    enrollments: List[EnrollmentListItem]
+    """Standard paginated list of the current user's enrollments."""
+    data: List[EnrollmentResponse]
+    meta: PaginationMeta
 
 
 class EnrollmentStatusResponse(BaseModel):

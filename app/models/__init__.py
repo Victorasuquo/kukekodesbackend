@@ -37,6 +37,7 @@ from app.models.progress import Streak, Badge, BadgeAward, Leaderboard
 
 # Notification models
 from app.models.notification import Notification, NotificationPreference, NotificationType
+from app.models.assessment import Certificate, Quiz, QuizAnswer, QuizAttempt, QuizQuestion
 
 # Community models (if exists)
 try:
@@ -85,4 +86,10 @@ __all__ = [
     "Notification",
     "NotificationPreference",
     "NotificationType",
+    # Assessments and certificates
+    "Quiz",
+    "QuizQuestion",
+    "QuizAnswer",
+    "QuizAttempt",
+    "Certificate",
 ]

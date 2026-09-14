@@ -8,6 +8,7 @@ from typing import Dict, Any
 import logging
 
 from app.api.v1.admin.service import AdminService
+from app.models.course import Course
 from app.dependencies import (
     get_db,
     get_admin_user,
@@ -18,6 +19,47 @@ from app.dependencies import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin Dashboard"])
+
+
+@router.get("/courses", response_model=Dict[str, Any], summary="List all courses for administration")
+async def get_admin_courses(
+    pagination: PaginationParams = Depends(get_pagination),
+    current_admin: Dict[str, Any] = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Return drafts and published courses through the standard pagination envelope."""
+    query = db.query(Course)
+    total = query.count()
+    courses = query.order_by(Course.created_at.desc()).offset(pagination.skip).limit(pagination.limit).all()
+    return {
+        "data": [
+            {
+                "id": str(course.id),
+                "title": course.title,
+                "description": course.description,
+                "tags": course.tags,
+                "skill_level": course.skill_level.value,
+                "category": course.category,
+                "instructor_id": str(course.instructor_id),
+                "status": course.status.value,
+                "is_free": course.is_free,
+                "is_featured": course.is_featured,
+                "cover_image_url": course.cover_image_url,
+                "total_enrollments": course.total_enrollments,
+                "modules_count": len(course.modules),
+                "lessons_count": sum(len(module.lessons) for module in course.modules),
+                "created_at": course.created_at.isoformat(),
+                "published_at": course.published_at.isoformat() if course.published_at else None,
+            }
+            for course in courses
+        ],
+        "meta": {
+            "page": pagination.page,
+            "page_size": pagination.page_size,
+            "total": total,
+            "total_pages": (total + pagination.page_size - 1) // pagination.page_size,
+        },
+    }
 
 
 # ============================================================================

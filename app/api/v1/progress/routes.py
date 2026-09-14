@@ -16,6 +16,7 @@ from app.api.v1.progress.schemas import (
     UserProgressDashboardResponse,
     UserProgressResponse,
     ModuleProgressResponse,
+    SyncLessonPositionRequest,
 )
 from app.dependencies import (
     get_db,
@@ -66,6 +67,7 @@ async def mark_lesson_complete(
             user_id=user_id,
             lesson_id=lesson_id,
             time_spent_minutes=request.time_spent_minutes,
+            idempotency_key=request.idempotency_key,
         )
         
         return result
@@ -73,6 +75,27 @@ async def mark_lesson_complete(
     except Exception as e:
         logger.error(f"Error marking lesson complete: {str(e)}")
         raise
+
+
+@router.put(
+    "/lesson/{lesson_id}/position",
+    response_model=Dict[str, Any],
+    summary="Synchronize resumable lesson position",
+)
+async def sync_lesson_position(
+    lesson_id: str,
+    request: SyncLessonPositionRequest,
+    current_user: Dict[str, Any] = Depends(get_student_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    return ProgressService.sync_lesson_position(
+        db=db,
+        user_id=current_user.get("sub"),
+        lesson_id=lesson_id,
+        position_seconds=request.position_seconds,
+        time_spent_minutes=request.time_spent_minutes,
+        idempotency_key=request.idempotency_key,
+    )
 
 
 # ============================================================================

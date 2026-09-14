@@ -115,16 +115,22 @@ async def get_my_enrollments(
                     user_id=e.user_id,
                     course_id=e.course_id,
                     course_title=e.course.title,
+                    course_cover_url=e.course.cover_image_url,
                     completion_percentage=e.completion_percentage,
                     is_completed=e.is_completed,
-                    enrolled_at=e.enrolled_at.isoformat(),
-                    completed_at=e.completed_at.isoformat() if e.completed_at else None,
+                    enrolled_at=e.enrolled_at,
+                    completed_at=e.completed_at,
+                    current_module_id=e.current_module_id,
+                    current_lesson_id=e.current_lesson_id,
                 )
                 for e in enrollments
             ],
-            total=total,
-            page=pagination.page,
-            page_size=pagination.page_size,
+            meta={
+                "total": total,
+                "page": pagination.page,
+                "page_size": pagination.page_size,
+                "total_pages": (total + pagination.page_size - 1) // pagination.page_size,
+            },
         )
     
     except Exception as e:

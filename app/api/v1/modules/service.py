@@ -9,7 +9,7 @@ from datetime import datetime
 import logging
 
 from app.models.course import Course, Module, Lesson
-from app.utils.exceptions import NotFoundError, ValidationError
+from app.utils.exceptions import ConflictError, NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ class ModuleService:
         title: str,
         description: Optional[str] = None,
         order: Optional[int] = None,
+        expected_version: Optional[int] = None,
     ) -> Module:
         """Create a new module."""
         # Verify course exists
@@ -84,6 +85,8 @@ class ModuleService:
     ) -> Module:
         """Update a module."""
         module = ModuleService.get_module(db, module_id)
+        if expected_version is not None and module.version != expected_version:
+            raise ConflictError("Module was changed by another request; reload before saving")
         
         if title:
             module.title = title
@@ -91,6 +94,7 @@ class ModuleService:
             module.description = description
         if order is not None:
             module.order = order
+        module.version += 1
         
         db.commit()
         db.refresh(module)

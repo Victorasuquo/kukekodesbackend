@@ -15,6 +15,13 @@ from uuid import UUID
 class MarkLessonCompleteRequest(BaseModel):
     """Request to mark a lesson as complete."""
     time_spent_minutes: int = Field(default=0, ge=0, description="Time spent on lesson in minutes")
+    idempotency_key: Optional[str] = Field(None, min_length=8, max_length=128)
+
+
+class SyncLessonPositionRequest(BaseModel):
+    position_seconds: int = Field(..., ge=0)
+    time_spent_minutes: int = Field(default=0, ge=0)
+    idempotency_key: str = Field(..., min_length=8, max_length=128)
 
 
 # ============================================================================
@@ -41,6 +48,7 @@ class UserProgressResponse(BaseModel):
     is_completed: bool
     completed_at: Optional[datetime] = None
     time_spent_minutes: int = 0
+    resume_position_seconds: int = 0
     
     class Config:
         from_attributes = True

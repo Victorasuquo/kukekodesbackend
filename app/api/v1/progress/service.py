@@ -8,12 +8,15 @@ from typing import Dict, Any, List, Optional, Tuple
 from uuid import UUID
 from datetime import datetime, timedelta
 import logging
+import secrets
 
 from app.models.course import Course, Module, Lesson
 from app.models.enrollment import Enrollment, UserProgress
 from app.models.progress import Streak, Badge, BadgeAward
 from app.models.user import User
 from app.models.notification import Notification, NotificationType, NotificationPreference
+from app.models.assessment import Certificate
+from app.api.v1.quizzes.service import QuizService
 from app.services.email_service import email_service
 from app.db.mongodb import insert_activity
 from app.utils.exceptions import NotFoundError, ValidationError
@@ -30,6 +33,7 @@ class ProgressService:
         user_id: str,
         lesson_id: str,
         time_spent_minutes: int = 0,
+        idempotency_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Mark a lesson as complete.
@@ -57,12 +61,27 @@ class ProgressService:
             user = db.query(User).filter(User.id == user_id).first()
             if not user:
                 raise NotFoundError("User", user_id)
+
+            enrollment = db.query(Enrollment).filter(
+                Enrollment.user_id == user_id,
+                Enrollment.course_id == course.id,
+            ).first()
+            if not enrollment:
+                raise ValidationError("User is not enrolled in this course")
             
             # Get or create user progress record
             progress = db.query(UserProgress).filter(
                 UserProgress.user_id == user_id,
                 UserProgress.lesson_id == lesson_id,
             ).first()
+            if progress and idempotency_key and progress.last_idempotency_key == idempotency_key:
+                return {
+                    "lesson_id": str(progress.lesson_id),
+                    "course_id": str(progress.course_id),
+                    "is_completed": progress.is_completed,
+                    "completion_percentage": enrollment.completion_percentage,
+                    "idempotent_replay": True,
+                }
             
             if not progress:
                 progress = UserProgress(
@@ -76,13 +95,12 @@ class ProgressService:
             # Mark as complete
             was_previously_complete = progress.is_completed
             progress.mark_complete(time_spent_minutes)
-            
+            progress.last_idempotency_key = idempotency_key
+            # Make a newly-created progress row visible to the rollup queries
+            # before calculating enrollment completion.
+            db.flush()
+
             # Update enrollment
-            enrollment = db.query(Enrollment).filter(
-                Enrollment.user_id == user_id,
-                Enrollment.course_id == course.id,
-            ).first()
-            
             if enrollment:
                 # Calculate total completed lessons in course
                 completed_lessons = db.query(UserProgress).filter(
@@ -221,6 +239,57 @@ class ProgressService:
             db.rollback()
             logger.error(f"Error marking lesson complete: {str(e)}")
             raise
+
+    @staticmethod
+    def sync_lesson_position(
+        db: Session,
+        user_id: str,
+        lesson_id: str,
+        position_seconds: int,
+        time_spent_minutes: int,
+        idempotency_key: str,
+    ) -> Dict[str, Any]:
+        lesson = db.query(Lesson).filter(Lesson.id == lesson_id).first()
+        if not lesson:
+            raise NotFoundError(f"Lesson with ID {lesson_id} not found")
+        enrollment = db.query(Enrollment).filter(
+            Enrollment.user_id == user_id,
+            Enrollment.course_id == lesson.module.course_id,
+        ).first()
+        if not enrollment:
+            raise ValidationError("User is not enrolled in this course")
+        progress = db.query(UserProgress).filter(
+            UserProgress.user_id == user_id,
+            UserProgress.lesson_id == lesson_id,
+        ).first()
+        if progress and progress.last_idempotency_key == idempotency_key:
+            return {
+                "lesson_id": str(progress.lesson_id),
+                "resume_position_seconds": progress.resume_position_seconds,
+                "time_spent_minutes": progress.time_spent_minutes,
+                "idempotent_replay": True,
+            }
+        if not progress:
+            progress = UserProgress(
+                user_id=UUID(user_id),
+                lesson_id=lesson.id,
+                module_id=lesson.module_id,
+                course_id=lesson.module.course_id,
+            )
+            db.add(progress)
+        progress.resume_position_seconds = position_seconds
+        progress.time_spent_minutes = max(progress.time_spent_minutes or 0, time_spent_minutes)
+        progress.last_idempotency_key = idempotency_key
+        enrollment.current_module_id = lesson.module_id
+        enrollment.current_lesson_id = lesson.id
+        enrollment.last_accessed_at = datetime.utcnow()
+        db.commit()
+        return {
+            "lesson_id": str(progress.lesson_id),
+            "resume_position_seconds": progress.resume_position_seconds,
+            "time_spent_minutes": progress.time_spent_minutes,
+            "idempotent_replay": False,
+        }
     
     @staticmethod
     def get_lesson_progress(
@@ -240,21 +309,25 @@ class ProgressService:
         
         if not progress:
             return {
+                "user_id": user_id,
                 "lesson_id": lesson_id,
+                "module_id": lesson.module_id,
+                "course_id": lesson.module.course_id,
                 "is_completed": False,
-                "time_spent_minutes": 0,
-                "started_at": None,
                 "completed_at": None,
+                "time_spent_minutes": 0,
+                "resume_position_seconds": 0,
             }
         
         return {
+            "user_id": progress.user_id,
             "lesson_id": lesson_id,
+            "module_id": progress.module_id,
+            "course_id": progress.course_id,
             "is_completed": progress.is_completed,
+            "completed_at": progress.completed_at,
             "time_spent_minutes": progress.time_spent_minutes,
-            "quiz_score": progress.quiz_score,
-            "quiz_attempts": progress.quiz_attempts,
-            "started_at": progress.started_at.isoformat() if progress.started_at else None,
-            "completed_at": progress.completed_at.isoformat() if progress.completed_at else None,
+            "resume_position_seconds": progress.resume_position_seconds,
         }
     
     @staticmethod
@@ -333,6 +406,19 @@ class ProgressService:
                 "completion_percentage": percentage,
                 "completed_lessons": completed,
                 "total_lessons": total,
+                "lessons": [
+                    {
+                        "id": str(lesson.id),
+                        "title": lesson.title,
+                        "order": lesson.order,
+                        "is_completed": db.query(UserProgress).filter(
+                            UserProgress.user_id == user_id,
+                            UserProgress.lesson_id == lesson.id,
+                            UserProgress.is_completed.is_(True),
+                        ).first() is not None,
+                    }
+                    for lesson in sorted(module.lessons, key=lambda item: item.order)
+                ],
             })
         
         # Calculate remaining time
@@ -346,26 +432,45 @@ class ProgressService:
             UserProgress.user_id == user_id,
             UserProgress.course_id == course_id,
         ).scalar() or 0
+
+        completed_lessons_count = db.query(UserProgress).filter(
+            UserProgress.user_id == user_id,
+            UserProgress.course_id == course_id,
+            UserProgress.is_completed.is_(True),
+        ).count()
+        completed_modules_count = sum(
+            1 for module_progress in modules_progress
+            if module_progress["total_lessons"] > 0
+            and module_progress["completed_lessons"] == module_progress["total_lessons"]
+        )
+        current_module = next(
+            ({"id": str(module.id), "title": module.title} for module in course.modules if module.id == enrollment.current_module_id),
+            None,
+        )
+        current_lesson = next(
+            (
+                {"id": str(lesson.id), "title": lesson.title}
+                for module in course.modules
+                for lesson in module.lessons
+                if lesson.id == enrollment.current_lesson_id
+            ),
+            None,
+        )
         
         return {
+            "user_id": user_id,
             "course_id": course_id,
             "course_title": course.title,
+            "total_modules": len(course.modules),
+            "completed_modules": completed_modules_count,
             "completion_percentage": enrollment.completion_percentage,
             "is_completed": enrollment.is_completed,
-            "enrolled_at": enrollment.enrolled_at.isoformat(),
-            "completed_at": enrollment.completed_at.isoformat() if enrollment.completed_at else None,
-            "current_module_id": str(enrollment.current_module_id) if enrollment.current_module_id else None,
-            "current_lesson_id": str(enrollment.current_lesson_id) if enrollment.current_lesson_id else None,
+            "current_module": current_module,
+            "current_lesson": current_lesson,
             "modules": modules_progress,
             "total_lessons": sum(len(m.lessons) for m in course.modules),
-            "completed_lessons": db.query(UserProgress).filter(
-                UserProgress.user_id == user_id,
-                UserProgress.course_id == course_id,
-                UserProgress.is_completed == True,
-            ).count(),
-            "time_spent_minutes": int(spent_time),
-            "estimated_remaining_minutes": max(0, total_duration - int(spent_time)),
-            "total_estimated_duration": total_duration,
+            "completed_lessons": completed_lessons_count,
+            "estimated_time_remaining_hours": round(max(0, total_duration - int(spent_time)) / 60, 2),
         }
     
     @staticmethod
@@ -401,7 +506,8 @@ class ProgressService:
         streak_data = {
             "current": streak.current_streak_count if streak else 0,
             "longest": streak.longest_streak_count if streak else 0,
-        } if streak else {"current": 0, "longest": 0}
+            "fire_emoji": "🔥" if streak and streak.current_streak_count else "🔲",
+        } if streak else {"current": 0, "longest": 0, "fire_emoji": "🔲"}
         
         # Get recent badges (via BadgeAward)
         recent_awards = db.query(BadgeAward).filter(
@@ -416,9 +522,9 @@ class ProgressService:
                 UserProgress.user_id == user_id,
                 UserProgress.is_completed == True,
             ).count(),
-            "total_time_spent_minutes": db.query(func.sum(UserProgress.time_spent_minutes)).filter(
+            "total_time_spent_hours": round((db.query(func.sum(UserProgress.time_spent_minutes)).filter(
                 UserProgress.user_id == user_id,
-            ).scalar() or 0,
+            ).scalar() or 0) / 60, 2),
             "badges_earned": len(recent_awards),
         }
         
@@ -625,6 +731,49 @@ class ProgressService:
     # ========================================================================
     
     @staticmethod
+    def _ensure_certificate(db: Session, enrollment: Enrollment) -> Certificate:
+        certificate = db.query(Certificate).filter(
+            Certificate.user_id == enrollment.user_id,
+            Certificate.course_id == enrollment.course_id,
+        ).first()
+        if certificate:
+            return certificate
+
+        verification_code = secrets.token_hex(8).upper()
+        certificate = Certificate(
+            user_id=enrollment.user_id,
+            course_id=enrollment.course_id,
+            certificate_id=f"CERT-{verification_code}",
+            verification_code=verification_code,
+        )
+        db.add(certificate)
+        db.commit()
+        db.refresh(certificate)
+        return certificate
+
+    @staticmethod
+    def _serialize_certificate(certificate: Certificate) -> Dict[str, Any]:
+        user = certificate.user
+        course = certificate.course
+        return {
+            "id": str(certificate.id),
+            "certificate_id": certificate.certificate_id,
+            "user_id": str(certificate.user_id),
+            "user_name": user.get_full_name(),
+            "course_id": str(certificate.course_id),
+            "course_title": course.title,
+            "course_description": course.description,
+            "skill_level": course.skill_level.value,
+            "completed_at": certificate.issued_at.isoformat(),
+            "issued_at": certificate.issued_at.isoformat(),
+            "verification_code": certificate.verification_code,
+            "verification_url": f"/api/v1/progress/verify-certificate/{certificate.verification_code}",
+            "file_key": certificate.file_key,
+            "is_valid": certificate.revoked_at is None,
+            "issued_by": "KukeKodes",
+        }
+
+    @staticmethod
     async def get_certificate(
         db: Session,
         user_id: str,
@@ -645,8 +794,6 @@ class ProgressService:
             NotFoundError: If enrollment not found
             ValidationError: If course not completed
         """
-        import hashlib
-        
         # Get enrollment
         enrollment = db.query(Enrollment).filter(
             Enrollment.user_id == user_id,
@@ -658,30 +805,9 @@ class ProgressService:
         
         if not enrollment.is_completed:
             raise ValidationError("Course not completed yet. Complete all lessons to earn your certificate.")
-        
-        # Get user and course
-        user = db.query(User).filter(User.id == user_id).first()
-        course = enrollment.course
-        
-        # Generate verification code (deterministic based on user_id, course_id, completion date)
-        verification_data = f"{user_id}-{course_id}-{enrollment.completed_at.isoformat()}"
-        verification_code = hashlib.sha256(verification_data.encode()).hexdigest()[:16].upper()
-        
-        return {
-            "certificate_id": f"CERT-{verification_code}",
-            "user_id": str(user_id),
-            "user_name": user.get_full_name(),
-            "course_id": str(course_id),
-            "course_title": course.title,
-            "course_description": course.description,
-            "skill_level": course.skill_level.value,
-            "completed_at": enrollment.completed_at.isoformat(),
-            "completion_percentage": 100.0,
-            "verification_code": verification_code,
-            "verification_url": f"/api/v1/progress/verify-certificate/{verification_code}",
-            "is_valid": True,
-            "issued_by": "Kukekodes",
-        }
+        if not QuizService.all_required_passed(db, user_id, course_id):
+            raise ValidationError("Pass every published course quiz to earn your certificate.")
+        return ProgressService._serialize_certificate(ProgressService._ensure_certificate(db, enrollment))
     
     @staticmethod
     async def get_user_certificates(
@@ -689,8 +815,6 @@ class ProgressService:
         user_id: str,
     ) -> Dict[str, Any]:
         """Get all certificates for a user."""
-        import hashlib
-        
         # Get all completed enrollments
         completed_enrollments = db.query(Enrollment).filter(
             Enrollment.user_id == user_id,
@@ -701,20 +825,10 @@ class ProgressService:
         
         certificates = []
         for enrollment in completed_enrollments:
-            course = enrollment.course
-            
-            # Generate verification code
-            verification_data = f"{user_id}-{enrollment.course_id}-{enrollment.completed_at.isoformat()}"
-            verification_code = hashlib.sha256(verification_data.encode()).hexdigest()[:16].upper()
-            
-            certificates.append({
-                "certificate_id": f"CERT-{verification_code}",
-                "course_id": str(enrollment.course_id),
-                "course_title": course.title,
-                "skill_level": course.skill_level.value,
-                "completed_at": enrollment.completed_at.isoformat(),
-                "verification_code": verification_code,
-            })
+            if QuizService.all_required_passed(db, user_id, str(enrollment.course_id)):
+                certificates.append(ProgressService._serialize_certificate(
+                    ProgressService._ensure_certificate(db, enrollment)
+                ))
         
         return {
             "user_id": str(user_id),
@@ -733,31 +847,14 @@ class ProgressService:
         
         This is a public endpoint that can be used by employers/third parties.
         """
-        import hashlib
-        
-        # Find all completed enrollments and check verification codes
-        completed_enrollments = db.query(Enrollment).filter(
-            Enrollment.is_completed == True,
-        ).all()
-        
-        for enrollment in completed_enrollments:
-            verification_data = f"{enrollment.user_id}-{enrollment.course_id}-{enrollment.completed_at.isoformat()}"
-            code = hashlib.sha256(verification_data.encode()).hexdigest()[:16].upper()
-            
-            if code == verification_code.upper():
-                user = db.query(User).filter(User.id == enrollment.user_id).first()
-                course = enrollment.course
-                
-                return {
-                    "is_valid": True,
-                    "certificate_id": f"CERT-{code}",
-                    "user_name": user.get_full_name(),
-                    "course_title": course.title,
-                    "skill_level": course.skill_level.value,
-                    "completed_at": enrollment.completed_at.isoformat(),
-                    "issued_by": "Kukekodes",
-                    "message": "This certificate is valid and was issued by Kukekodes.",
-                }
+        certificate = db.query(Certificate).filter(
+            Certificate.verification_code == verification_code.upper(),
+            Certificate.revoked_at.is_(None),
+        ).first()
+        if certificate:
+            result = ProgressService._serialize_certificate(certificate)
+            result["message"] = "This certificate is valid and was issued by KukeKodes."
+            return result
         
         return {
             "is_valid": False,

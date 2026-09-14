@@ -15,7 +15,7 @@ from app.models.enrollment import Enrollment, UserProgress
 from app.models.progress import Streak
 from app.services.youtube_service import youtube_service
 from app.db.mongodb import insert_activity
-from app.dependencies import NotFoundError, UnauthorizedError, ValidationError
+from app.dependencies import ConflictError, NotFoundError, UnauthorizedError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +123,7 @@ class CourseService:
         is_free: Optional[bool] = None,
         is_featured: Optional[bool] = None,
         cover_image_url: Optional[str] = None,
+        expected_version: Optional[int] = None,
     ) -> Course:
         """Update course details."""
         course = CourseService.get_course(db, course_id)
@@ -134,6 +135,8 @@ class CourseService:
         # Only allow editing draft courses
         if course.status != CourseStatus.DRAFT:
             raise ValidationError("Cannot edit published or archived courses")
+        if expected_version is not None and course.version != expected_version:
+            raise ConflictError("Course was changed by another request; reload before saving")
         
         if title:
             course.title = title
@@ -152,6 +155,7 @@ class CourseService:
             course.is_featured = is_featured
         if cover_image_url:
             course.cover_image_url = cover_image_url
+        course.version += 1
         
         db.commit()
         db.refresh(course)

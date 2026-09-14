@@ -142,6 +142,8 @@ class UserProgress(Base):
     
     # === TIME TRACKING ===
     time_spent_minutes = Column(Integer, default=0, nullable=False)
+    resume_position_seconds = Column(Integer, default=0, nullable=False)
+    last_idempotency_key = Column(String(128), nullable=True)
     
     # === QUIZ/ASSESSMENT TRACKING ===
     quiz_score = Column(Float, nullable=True)  # Percentage: 0-100
@@ -163,6 +165,7 @@ class UserProgress(Base):
         UniqueConstraint("user_id", "lesson_id", name="uq_user_lesson_progress"),
         Index("idx_progress_user_course_completed", "user_id", "course_id", "is_completed"),
         Index("idx_progress_lesson_completed", "lesson_id", "is_completed"),
+        Index("idx_progress_user_idempotency", "user_id", "last_idempotency_key"),
     )
     
     def __repr__(self) -> str:

@@ -18,6 +18,7 @@ REQUIRED_PATHS = {
     "/api/v1/admin/auth/refresh",
     "/api/v1/admin/auth/logout",
     "/api/v1/admin/dashboard/overview",
+    "/api/v1/admin/courses",
     "/api/v1/organizations",
     "/api/v1/organizations/{organization_id}/memberships",
     "/api/v1/organizations/{organization_id}/memberships/by-learner-id",
@@ -27,6 +28,14 @@ REQUIRED_PATHS = {
     "/api/v1/courses",
     "/api/v1/modules",
     "/api/v1/lessons",
+    "/api/v1/quizzes",
+    "/api/v1/quizzes/course/{course_id}",
+    "/api/v1/quizzes/{quiz_id}",
+    "/api/v1/quizzes/{quiz_id}/attempts",
+    "/api/v1/progress/course/{course_id}",
+    "/api/v1/progress/mark-lesson-complete/{lesson_id}",
+    "/api/v1/progress/certificate/{course_id}",
+    "/api/v1/progress/verify-certificate/{verification_code}",
 }
 
 

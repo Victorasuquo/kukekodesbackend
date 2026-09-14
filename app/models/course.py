@@ -95,12 +95,15 @@ class Course(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     published_at = Column(DateTime, nullable=True)
+    version = Column(Integer, default=1, nullable=False)
     
     # === RELATIONSHIPS ===
     instructor = relationship("User", back_populates="courses", foreign_keys=[instructor_id])
     modules = relationship("Module", back_populates="course", cascade="all, delete-orphan")
     enrollments = relationship("Enrollment", back_populates="course", cascade="all, delete-orphan")
     progress = relationship("UserProgress", back_populates="course", cascade="all, delete-orphan")
+    quizzes = relationship("Quiz", back_populates="course", cascade="all, delete-orphan")
+    certificates = relationship("Certificate", back_populates="course", cascade="all, delete-orphan")
     
     # === INDEXES ===
     __table_args__ = (
@@ -157,6 +160,7 @@ class Module(Base):
     # === TIMESTAMPS ===
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    version = Column(Integer, default=1, nullable=False)
     
     # === RELATIONSHIPS ===
     course = relationship("Course", back_populates="modules")
@@ -219,6 +223,7 @@ class Lesson(Base):
     # === TIMESTAMPS ===
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    version = Column(Integer, default=1, nullable=False)
     
     # === RELATIONSHIPS ===
     module = relationship("Module", back_populates="lessons")

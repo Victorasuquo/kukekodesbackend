@@ -4,7 +4,7 @@ Course management API endpoints.
 
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.orm import Session
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import logging
 
 from app.api.v1.courses.service import CourseService
@@ -85,6 +85,7 @@ async def create_course(
             status=course.status.value,
             is_free=course.is_free,
             total_enrollments=course.total_enrollments,
+            version=course.version,
             created_at=course.created_at.isoformat(),
             published_at=course.published_at.isoformat() if course.published_at else None,
         )
@@ -125,9 +126,12 @@ async def get_course(
                         youtube_video_id=l.youtube_video_id,
                         duration_minutes=l.duration_minutes,
                         thumbnail_url=l.thumbnail_url,
+                        transcript=l.transcript,
+                        resources=l.resources,
                         order=l.order,
                         status=l.status.value,
                         created_at=l.created_at.isoformat(),
+                        version=l.version,
                     )
                     for l in sorted(m.lessons, key=lambda x: x.order)
                 ],
@@ -147,6 +151,7 @@ async def get_course(
             status=course.status.value,
             is_free=course.is_free,
             total_enrollments=course.total_enrollments,
+            version=course.version,
             cover_image_url=course.cover_image_url,
             thumbnail_url=course.thumbnail_url,
             is_featured=course.is_featured,
@@ -189,6 +194,7 @@ async def update_course(
             is_free=request.is_free,
             is_featured=request.is_featured,
             cover_image_url=request.cover_image_url,
+            expected_version=request.expected_version,
         )
         
         return CourseResponse(
@@ -202,6 +208,7 @@ async def update_course(
             status=course.status.value,
             is_free=course.is_free,
             total_enrollments=course.total_enrollments,
+            version=course.version,
             created_at=course.created_at.isoformat(),
             published_at=course.published_at.isoformat() if course.published_at else None,
         )
@@ -263,7 +270,7 @@ async def preview_course(
 )
 async def publish_course(
     course_id: str,
-    request: CoursePublishRequest,
+    request: Optional[CoursePublishRequest] = None,
     current_user: Dict[str, Any] = Depends(get_instructor_user),
     db: Session = Depends(get_db),
 ) -> CoursePublishResponse:

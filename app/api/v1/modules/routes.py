@@ -33,6 +33,7 @@ class ModuleUpdateRequest(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     order: Optional[int] = None
+    expected_version: Optional[int] = Field(None, ge=1)
 
 
 class ModuleResponse(BaseModel):
@@ -42,6 +43,7 @@ class ModuleResponse(BaseModel):
     description: Optional[str]
     order: int
     created_at: str
+    version: int = 1
     
     class Config:
         from_attributes = True
@@ -107,6 +109,7 @@ async def create_module(
         description=module.description,
         order=module.order,
         created_at=module.created_at.isoformat(),
+        version=module.version,
     )
 
 
@@ -124,6 +127,7 @@ async def update_module(
         title=request.title,
         description=request.description,
         order=request.order,
+        expected_version=request.expected_version,
     )
     
     return ModuleResponse(
@@ -133,6 +137,7 @@ async def update_module(
         description=module.description,
         order=module.order,
         created_at=module.created_at.isoformat(),
+        version=module.version,
     )
 
 

@@ -35,6 +35,7 @@ class LessonCreateRequest(BaseModel):
     youtube_url: Optional[str] = None
     duration_minutes: Optional[int] = None
     resources: Optional[Dict] = None
+    transcript: Optional[str] = None
     order: Optional[int] = None
     status: LessonStatusEnum = LessonStatusEnum.DRAFT
 
@@ -45,8 +46,10 @@ class LessonUpdateRequest(BaseModel):
     youtube_url: Optional[str] = None
     duration_minutes: Optional[int] = None
     resources: Optional[Dict] = None
+    transcript: Optional[str] = None
     order: Optional[int] = None
     status: Optional[LessonStatusEnum] = None
+    expected_version: Optional[int] = Field(None, ge=1)
 
 
 class LessonResponse(BaseModel):
@@ -57,9 +60,13 @@ class LessonResponse(BaseModel):
     youtube_url: Optional[str]
     youtube_video_id: Optional[str]
     duration_minutes: Optional[int]
+    thumbnail_url: Optional[str]
+    transcript: Optional[str]
+    resources: Optional[Dict]
     order: int
     status: str
     created_at: str
+    version: int = 1
     
     class Config:
         from_attributes = True
@@ -94,6 +101,9 @@ async def get_module_lessons(
             youtube_url=l.youtube_url,
             youtube_video_id=l.youtube_video_id,
             duration_minutes=l.duration_minutes,
+            thumbnail_url=l.thumbnail_url,
+            transcript=l.transcript,
+            resources=l.resources,
             order=l.order,
             status=l.status.value,
             created_at=l.created_at.isoformat(),
@@ -117,6 +127,7 @@ async def create_lesson(
         youtube_url=request.youtube_url,
         duration_minutes=request.duration_minutes,
         resources=request.resources,
+        transcript=request.transcript,
         order=request.order,
         status=LessonStatus(request.status.value),
     )
@@ -129,6 +140,9 @@ async def create_lesson(
         youtube_url=lesson.youtube_url,
         youtube_video_id=lesson.youtube_video_id,
         duration_minutes=lesson.duration_minutes,
+        thumbnail_url=lesson.thumbnail_url,
+        transcript=lesson.transcript,
+        resources=lesson.resources,
         order=lesson.order,
         status=lesson.status.value,
         created_at=lesson.created_at.isoformat(),
@@ -151,8 +165,10 @@ async def update_lesson(
         youtube_url=request.youtube_url,
         duration_minutes=request.duration_minutes,
         resources=request.resources,
+        transcript=request.transcript,
         order=request.order,
         status=LessonStatus(request.status.value) if request.status else None,
+        expected_version=request.expected_version,
     )
     
     return LessonResponse(
@@ -163,9 +179,13 @@ async def update_lesson(
         youtube_url=lesson.youtube_url,
         youtube_video_id=lesson.youtube_video_id,
         duration_minutes=lesson.duration_minutes,
+        thumbnail_url=lesson.thumbnail_url,
+        transcript=lesson.transcript,
+        resources=lesson.resources,
         order=lesson.order,
         status=lesson.status.value,
         created_at=lesson.created_at.isoformat(),
+        version=lesson.version,
     )
 
 
@@ -196,6 +216,9 @@ async def publish_lesson(
         youtube_url=lesson.youtube_url,
         youtube_video_id=lesson.youtube_video_id,
         duration_minutes=lesson.duration_minutes,
+        thumbnail_url=lesson.thumbnail_url,
+        transcript=lesson.transcript,
+        resources=lesson.resources,
         order=lesson.order,
         status=lesson.status.value,
         created_at=lesson.created_at.isoformat(),
@@ -219,6 +242,9 @@ async def unpublish_lesson(
         youtube_url=lesson.youtube_url,
         youtube_video_id=lesson.youtube_video_id,
         duration_minutes=lesson.duration_minutes,
+        thumbnail_url=lesson.thumbnail_url,
+        transcript=lesson.transcript,
+        resources=lesson.resources,
         order=lesson.order,
         status=lesson.status.value,
         created_at=lesson.created_at.isoformat(),
