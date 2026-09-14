@@ -28,6 +28,7 @@ class ThreadResponse(BaseModel):
     moderation_status: str
     created_at: datetime
     reply_count: int = 0
+    replies_count: int = 0
 class PageMeta(BaseModel):
     page: int
     page_size: int
