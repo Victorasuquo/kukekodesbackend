@@ -21,6 +21,8 @@ from app.api.v1.organizations.schemas import (
 )
 from app.api.v1.organizations.service import OrganizationService
 from app.models.organization import OrganizationRole, CourseAssignment
+from app.models.enrollment import Enrollment
+from app.models.user import User
 from app.dependencies import get_db
 from app.security import get_current_user
 
@@ -141,3 +143,12 @@ async def assign_course(
 async def list_assignments(organization_id: str, current_user: Dict[str, Any] = Depends(get_current_user), db: Session = Depends(get_db)):
     OrganizationService.require_org_role(db, current_user, organization_id, {OrganizationRole.OWNER, OrganizationRole.ADMIN, OrganizationRole.INSTRUCTOR})
     return db.query(CourseAssignment).filter(CourseAssignment.organization_id == organization_id).order_by(CourseAssignment.created_at.desc()).all()
+
+@router.get("/{organization_id}/analytics")
+async def organization_analytics(organization_id: str, current_user: Dict[str, Any] = Depends(get_current_user), db: Session = Depends(get_db)):
+    OrganizationService.require_org_role(db, current_user, organization_id, {OrganizationRole.OWNER, OrganizationRole.ADMIN, OrganizationRole.INSTRUCTOR})
+    member_ids=[m.user_id for m in db.query(OrganizationMembership).filter(OrganizationMembership.organization_id==organization_id, OrganizationMembership.status==MembershipStatus.ACTIVE).all()]
+    assignments=db.query(CourseAssignment).filter(CourseAssignment.organization_id==organization_id).count()
+    enrollments=db.query(Enrollment).filter(Enrollment.user_id.in_(member_ids)).count() if member_ids else 0
+    completed=db.query(Enrollment).filter(Enrollment.user_id.in_(member_ids), Enrollment.is_completed.is_(True)).count() if member_ids else 0
+    return {"members":len(member_ids),"assignments":assignments,"enrollments":enrollments,"completed_enrollments":completed,"completion_rate":round((completed/enrollments*100) if enrollments else 0,2)}

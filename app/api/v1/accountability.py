@@ -1,5 +1,6 @@
 """Learner accountability matching and progress APIs."""
 import secrets
+import asyncio
 from datetime import datetime, timedelta
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
@@ -15,6 +16,7 @@ from app.models.user import User
 from app.models.enrollment import UserProgress
 from app.models.progress import Streak
 from app.models.community import CommunityReport, CommunityBlock
+from app.config import settings
 
 router = APIRouter(prefix="/api/v1/accountability", tags=["Accountability"])
 ADJECTIVES = ("Bright", "Curious", "Bold", "Brave", "Focused", "Rising", "Swift", "Clever")
@@ -126,13 +128,31 @@ async def chat_socket(websocket: WebSocket, token: str, db: Session=Depends(get_
     except Exception:
         await websocket.close(code=1008); return
     await websocket.accept(); collection=get_mongodb().accountability_messages
+    redis_client = None; pubsub = None; relay_task = None
+    if settings.REDIS_URL:
+        try:
+            import redis.asyncio as redis
+            redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+            pubsub = redis_client.pubsub(); await pubsub.subscribe(f"accountability:{membership.cluster_id}")
+            async def relay():
+                async for item in pubsub.listen():
+                    if item.get("type") == "message": await websocket.send_text(item["data"])
+            relay_task = asyncio.create_task(relay())
+        except Exception:
+            redis_client = None; pubsub = None
     try:
         while True:
             content=(await websocket.receive_text()).strip()
             if not content or len(content)>2000: continue
             now=datetime.utcnow(); doc={"cluster_id":str(membership.cluster_id),"user_id":str(user_id),"content":content,"deleted":False,"created_at":now}; result=collection.insert_one(doc)
-            await websocket.send_json({"id":str(result.inserted_id),"user_id":str(user_id),"content":content,"created_at":now.isoformat()})
+            message={"id":str(result.inserted_id),"user_id":str(user_id),"content":content,"created_at":now.isoformat()}
+            if redis_client: await redis_client.publish(f"accountability:{membership.cluster_id}", __import__("json").dumps(message))
+            else: await websocket.send_json(message)
     except WebSocketDisconnect: return
+    finally:
+        if relay_task: relay_task.cancel()
+        if pubsub: await pubsub.unsubscribe()
+        if redis_client: await redis_client.close()
 
 @router.post("/cluster/report", status_code=201)
 def report_cluster(request: ReportRequest, current_user=Depends(get_current_user), db: Session=Depends(get_db)):
