@@ -12,6 +12,9 @@ from app.db.mongodb import get_mongodb
 from bson import ObjectId
 from app.models.accountability import AccountabilityCluster, AccountabilityClusterMembership, AccountabilityMatchQueue, ClusterStatus, QueueStatus
 from app.models.user import User
+from app.models.enrollment import UserProgress
+from app.models.progress import Streak
+from app.models.community import CommunityReport, CommunityBlock
 
 router = APIRouter(prefix="/api/v1/accountability", tags=["Accountability"])
 ADJECTIVES = ("Bright", "Curious", "Bold", "Brave", "Focused", "Rising", "Swift", "Clever")
@@ -67,6 +70,29 @@ def cluster_view(current_user=Depends(get_current_user), db: Session=Depends(get
     cluster=db.query(AccountabilityCluster).get(membership.cluster_id)
     members=db.query(AccountabilityClusterMembership,User).join(User,User.id==AccountabilityClusterMembership.user_id).filter(AccountabilityClusterMembership.cluster_id==cluster.id,AccountabilityClusterMembership.left_at.is_(None)).all()
     return {"id":str(cluster.id),"name":cluster.name,"capacity":cluster.capacity,"members":[{"id":str(u.id),"display_name":f"{u.first_name} {u.last_name[:1]}."} for _,u in members]}
+
+@router.get("/cluster/progress")
+def cluster_progress(current_user=Depends(get_current_user), db: Session=Depends(get_db)):
+    membership=require_cluster(db,uid(current_user)); rows=db.query(AccountabilityClusterMembership,User,Streak).join(User,User.id==AccountabilityClusterMembership.user_id).outerjoin(Streak,Streak.user_id==User.id).filter(AccountabilityClusterMembership.cluster_id==membership.cluster_id,AccountabilityClusterMembership.left_at.is_(None)).all()
+    return {"data":[{"display_name":f"{u.first_name} {u.last_name[:1]}.","completed_lessons":db.query(UserProgress).filter(UserProgress.user_id==u.id,UserProgress.is_completed.is_(True)).count(),"current_streak":s.current_streak_count if s else 0,"last_active_date":s.last_activity_date.date().isoformat() if s and s.last_activity_date else None} for _,u,s in rows]}
+
+@router.get("/chat/unread-count")
+def unread_count(current_user=Depends(get_current_user), db: Session=Depends(get_db)):
+    membership=require_cluster(db,uid(current_user)); count=get_mongodb().accountability_messages.count_documents({"cluster_id":str(membership.cluster_id),"user_id":{"$ne":str(uid(current_user))},"deleted":False})
+    return {"count":count}
+
+@router.post("/chat/messages/{message_id}/report", status_code=201)
+def report_message(message_id: str, request: ReportRequest, current_user=Depends(get_current_user), db: Session=Depends(get_db)):
+    require_cluster(db,uid(current_user)); report=CommunityReport(reporter_id=uid(current_user),content_id=f"accountability:{message_id}",reason=request.reason); db.add(report); db.commit(); return {"status":"reported","id":str(report.id)}
+
+@router.post("/chat/users/{user_id}/block", status_code=201)
+def block_chat_user(user_id: str, current_user=Depends(get_current_user), db: Session=Depends(get_db)):
+    require_cluster(db,uid(current_user));
+    if str(uid(current_user)) == user_id: raise HTTPException(400,"Cannot block yourself")
+    db.add(CommunityBlock(blocker_id=uid(current_user),blocked_user_id=user_id));
+    try: db.commit()
+    except Exception: db.rollback()
+    return {"status":"blocked"}
 
 @router.get("/chat/messages")
 def chat_messages(limit: int=50, current_user=Depends(get_current_user), db: Session=Depends(get_db)):

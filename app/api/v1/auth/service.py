@@ -16,6 +16,8 @@ from app.models.identity import Credential, PasswordRecoveryToken, RefreshSessio
 from app.models.notification import NotificationPreference
 from app.models.progress import Streak
 from app.models.user import User, UserProfile, UserRole
+from app.models.accountability import AccountabilityMatchQueue
+from app.models.outbox import OutboxEvent
 from app.security import create_access_token, hash_password, verify_password
 
 
@@ -119,6 +121,8 @@ class AuthService:
             db.add(UserProfile(user_id=user.id))
             db.add(Streak(user_id=user.id))
             db.add(NotificationPreference(user_id=user.id))
+            db.add(AccountabilityMatchQueue(user_id=user.id))
+            db.add(OutboxEvent(event_type="welcome_email", payload={"user_id": str(user.id), "email": normalized_email}, idempotency_key=f"welcome:{user.id}"))
             db.commit()
             db.refresh(user)
             return user

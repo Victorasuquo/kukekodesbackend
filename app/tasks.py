@@ -19,10 +19,25 @@ def process_outbox() -> int:
     db = get_db_session()
     try:
         events = db.execute(select(OutboxEvent).where(OutboxEvent.status == "pending", OutboxEvent.available_at <= datetime.utcnow()).with_for_update(skip_locked=True).limit(50)).scalars().all()
+        from app.models.user import User
+        from app.services.email_service import email_service
         for event in events:
-            event.status = "processed"
-            event.processed_at = datetime.utcnow()
             event.attempts += 1
+            try:
+                user = db.query(User).filter(User.id == event.payload.get("user_id")).first()
+                recipient = (user.contact_email or user.email) if user else event.payload.get("email")
+                if event.event_type == "welcome_email" and recipient:
+                    sent = email_service.send_email(recipient, "Welcome to KukeKodes", "<p>Welcome to KukeKodes. Your learning journey starts now.</p>")
+                elif event.event_type == "weekly_progress_reminder" and recipient:
+                    sent = email_service.send_email(recipient, "Your weekly KukeKodes progress", "<p>Keep your learning streak going this week.</p>")
+                else:
+                    sent = True
+                if sent:
+                    event.status = "processed"; event.processed_at = datetime.utcnow(); event.last_error = None
+                else:
+                    event.status = "pending" if event.attempts < 3 else "dead_letter"; event.last_error = "Provider did not accept the message"
+            except Exception as exc:
+                event.status = "pending" if event.attempts < 3 else "dead_letter"; event.last_error = str(exc)
         db.commit()
         return len(events)
     finally:
