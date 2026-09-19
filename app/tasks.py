@@ -28,7 +28,7 @@ def process_outbox() -> int:
                 recipient = (user.contact_email or user.email) if user else event.payload.get("email")
                 if event.event_type == "welcome_email" and recipient:
                     sent = email_service.send_email(recipient, "Welcome to KukeKodes", "<p>Welcome to KukeKodes. Your learning journey starts now.</p>")
-                elif event.event_type == "weekly_progress_reminder" and recipient:
+                elif event.event_type in {"weekly_progress_reminder", "accountability_digest"} and recipient:
                     sent = email_service.send_email(recipient, "Your weekly KukeKodes progress", "<p>Keep your learning streak going this week.</p>")
                 else:
                     sent = True
@@ -59,6 +59,23 @@ def process_weekly_reminders() -> int:
             created += 1
         db.commit()
         return created
+    finally:
+        db.close()
+
+@celery_app.task(name="kukekodes.process-daily-digests")
+def process_daily_digests() -> int:
+    """Batch one idempotent digest event per opted-in learner per UTC day."""
+    from app.models.user import User
+    from app.models.notification import NotificationPreference
+    db = get_db_session()
+    try:
+        today = datetime.utcnow().date().isoformat(); created = 0
+        rows = db.query(User, NotificationPreference).join(NotificationPreference, NotificationPreference.user_id == User.id).filter(User.is_active.is_(True), NotificationPreference.all_emails_enabled.is_(True), NotificationPreference.receive_weekly_summary.is_(True)).all()
+        for user, _ in rows:
+            key = f"accountability-digest:{user.id}:{today}"
+            if db.query(OutboxEvent).filter_by(idempotency_key=key).first(): continue
+            db.add(OutboxEvent(event_type="accountability_digest", payload={"user_id":str(user.id),"email":user.contact_email or user.email}, idempotency_key=key)); created += 1
+        db.commit(); return created
     finally:
         db.close()
 

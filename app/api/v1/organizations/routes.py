@@ -20,9 +20,13 @@ from app.api.v1.organizations.schemas import (
     OrganizationResponse,
 )
 from app.api.v1.organizations.service import OrganizationService
-from app.models.organization import OrganizationRole, CourseAssignment
+from app.models.organization import OrganizationRole, CourseAssignment, OrganizationMembership, MembershipStatus, Organization
 from app.models.enrollment import Enrollment
 from app.models.user import User
+from pydantic import BaseModel
+class OrganizationSettingsRequest(BaseModel):
+    timezone: str | None = None
+    branding: dict | None = None
 from app.dependencies import get_db
 from app.security import get_current_user
 
@@ -152,3 +156,11 @@ async def organization_analytics(organization_id: str, current_user: Dict[str, A
     enrollments=db.query(Enrollment).filter(Enrollment.user_id.in_(member_ids)).count() if member_ids else 0
     completed=db.query(Enrollment).filter(Enrollment.user_id.in_(member_ids), Enrollment.is_completed.is_(True)).count() if member_ids else 0
     return {"members":len(member_ids),"assignments":assignments,"enrollments":enrollments,"completed_enrollments":completed,"completion_rate":round((completed/enrollments*100) if enrollments else 0,2)}
+
+@router.put("/{organization_id}/settings")
+async def update_organization_settings(organization_id: str, request: OrganizationSettingsRequest, current_user: Dict[str, Any] = Depends(get_current_user), db: Session = Depends(get_db)):
+    OrganizationService.require_org_role(db, current_user, organization_id, {OrganizationRole.OWNER, OrganizationRole.ADMIN})
+    organization=db.query(Organization).filter(Organization.id==organization_id).first()
+    if request.timezone is not None: organization.timezone=request.timezone
+    if request.branding is not None: organization.branding=request.branding
+    db.commit(); db.refresh(organization); return {"id":str(organization.id),"timezone":organization.timezone,"branding":organization.branding}

@@ -29,6 +29,7 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     beat_schedule={
         "weekly-progress-reminders": {"task": "kukekodes.process-weekly-reminders", "schedule": 86400.0},
+        "daily-accountability-digest": {"task": "kukekodes.process-daily-digests", "schedule": 86400.0},
         "process-outbox": {"task": "kukekodes.process-outbox", "schedule": 30.0},
         "match-accountability-learners": {"task": "kukekodes.match-accountability-learners", "schedule": 300.0},
     },
