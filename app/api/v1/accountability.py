@@ -78,8 +78,24 @@ def cluster_progress(current_user=Depends(get_current_user), db: Session=Depends
 
 @router.get("/chat/unread-count")
 def unread_count(current_user=Depends(get_current_user), db: Session=Depends(get_db)):
-    membership=require_cluster(db,uid(current_user)); count=get_mongodb().accountability_messages.count_documents({"cluster_id":str(membership.cluster_id),"user_id":{"$ne":str(uid(current_user))},"deleted":False})
+    membership=require_cluster(db,uid(current_user)); state=get_mongodb().accountability_read_cursors.find_one({"cluster_id":str(membership.cluster_id),"user_id":str(uid(current_user))}); after=state.get("last_read_at") if state else datetime.min; count=get_mongodb().accountability_messages.count_documents({"cluster_id":str(membership.cluster_id),"created_at":{"$gt":after},"user_id":{"$ne":str(uid(current_user))},"deleted":False})
     return {"count":count}
+
+@router.post("/chat/read")
+def mark_chat_read(current_user=Depends(get_current_user), db: Session=Depends(get_db)):
+    membership=require_cluster(db,uid(current_user)); get_mongodb().accountability_read_cursors.update_one({"cluster_id":str(membership.cluster_id),"user_id":str(uid(current_user))},{"$set":{"last_read_at":datetime.utcnow()}},upsert=True); return {"status":"read"}
+
+@router.patch("/chat/messages/{message_id}")
+def edit_message(message_id: str, request: MessageRequest, current_user=Depends(get_current_user), db: Session=Depends(get_db)):
+    membership=require_cluster(db,uid(current_user)); result=get_mongodb().accountability_messages.update_one({"_id":ObjectId(message_id),"cluster_id":str(membership.cluster_id),"user_id":str(uid(current_user)),"deleted":False},{"$set":{"content":request.content.strip(),"edited_at":datetime.utcnow()}})
+    if not result.matched_count: raise HTTPException(404,"Message not found")
+    return {"status":"updated"}
+
+@router.delete("/chat/messages/{message_id}")
+def delete_message(message_id: str, current_user=Depends(get_current_user), db: Session=Depends(get_db)):
+    membership=require_cluster(db,uid(current_user)); result=get_mongodb().accountability_messages.update_one({"_id":ObjectId(message_id),"cluster_id":str(membership.cluster_id),"user_id":str(uid(current_user))},{"$set":{"deleted":True,"deleted_at":datetime.utcnow()}})
+    if not result.matched_count: raise HTTPException(404,"Message not found")
+    return {"status":"deleted"}
 
 @router.post("/chat/messages/{message_id}/report", status_code=201)
 def report_message(message_id: str, request: ReportRequest, current_user=Depends(get_current_user), db: Session=Depends(get_db)):

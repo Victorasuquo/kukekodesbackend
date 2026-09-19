@@ -20,6 +20,7 @@ from app.api.v1.organizations.schemas import (
     OrganizationResponse,
 )
 from app.api.v1.organizations.service import OrganizationService
+from app.models.organization import OrganizationRole, CourseAssignment
 from app.dependencies import get_db
 from app.security import get_current_user
 
@@ -135,3 +136,8 @@ async def assign_course(
     return OrganizationService.assign_course(
         db, current_user, organization_id, request.course_id, request.cohort_id, request.user_id, request.due_at
     )
+
+@router.get("/{organization_id}/assignments", response_model=list[CourseAssignmentResponse])
+async def list_assignments(organization_id: str, current_user: Dict[str, Any] = Depends(get_current_user), db: Session = Depends(get_db)):
+    OrganizationService.require_org_role(db, current_user, organization_id, {OrganizationRole.OWNER, OrganizationRole.ADMIN, OrganizationRole.INSTRUCTOR})
+    return db.query(CourseAssignment).filter(CourseAssignment.organization_id == organization_id).order_by(CourseAssignment.created_at.desc()).all()
