@@ -116,6 +116,8 @@ def create_indexes():
         db.forum_replies.create_index([("user_id", ASCENDING)])
         db.forum_replies.create_index([("created_at", DESCENDING)])
         db.forum_replies.create_index([("moderation_status", ASCENDING)])
+        db.accountability_messages.create_index([("cluster_id", ASCENDING), ("created_at", DESCENDING)])
+        db.accountability_messages.create_index([("created_at", DESCENDING)], expireAfterSeconds=31536000)
         logger.info("Indexes created for 'forum_replies' collection")
         
         # === ANALYTICS COLLECTION ===
