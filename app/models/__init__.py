@@ -43,6 +43,7 @@ from app.models.phase3 import LiveSession, LiveSessionAttendance, CodeExercise, 
 # Community models (if exists)
 from app.models.community import CommunityReport, CommunityBlock
 from app.models.outbox import OutboxEvent
+from app.models.accountability import AccountabilityCluster, AccountabilityClusterMembership, AccountabilityMatchQueue, ClusterStatus, QueueStatus
 
 __all__ = [
     # User
@@ -93,6 +94,7 @@ __all__ = [
     "Certificate",
     "CommunityReport",
     "OutboxEvent",
+    "AccountabilityCluster", "AccountabilityClusterMembership", "AccountabilityMatchQueue", "ClusterStatus", "QueueStatus",
     "CommunityBlock",
     "LiveSession", "LiveSessionAttendance", "CodeExercise", "CodeSubmission",
 ]

@@ -30,5 +30,6 @@ celery_app.conf.update(
     beat_schedule={
         "weekly-progress-reminders": {"task": "kukekodes.process-weekly-reminders", "schedule": 86400.0},
         "process-outbox": {"task": "kukekodes.process-outbox", "schedule": 30.0},
+        "match-accountability-learners": {"task": "kukekodes.match-accountability-learners", "schedule": 300.0},
     },
 )

@@ -16,6 +16,7 @@ from app.db.postgres import init_db, engine
 from app.db.mongodb import connect_mongodb, disconnect_mongodb, get_mongodb
 from app.security import CORS_CONFIG, SECURITY_HEADERS
 from app.api.v1.webhooks import router as webhooks_router
+from app.api.v1.accountability import router as accountability_router
 
 # Configure logging
 logging.basicConfig(
@@ -278,6 +279,7 @@ app.include_router(live_router)
 app.include_router(exercises_router)
 app.include_router(notifications_router)
 app.include_router(webhooks_router)
+app.include_router(accountability_router)
 
 
 # ============================================================================

@@ -5,6 +5,7 @@ from app.db.postgres import get_db_session
 from app.models.outbox import OutboxEvent
 from datetime import datetime
 from sqlalchemy import select
+from sqlalchemy import func
 
 
 @celery_app.task(name="kukekodes.healthcheck")
@@ -43,5 +44,24 @@ def process_weekly_reminders() -> int:
             created += 1
         db.commit()
         return created
+    finally:
+        db.close()
+
+@celery_app.task(name="kukekodes.match-accountability-learners")
+def match_accountability_learners() -> int:
+    """Create full groups, or seven-day groups with at least three learners."""
+    from app.models.accountability import AccountabilityCluster, AccountabilityClusterMembership, AccountabilityMatchQueue, QueueStatus
+    from app.api.v1.accountability import unique_name
+    db = get_db_session()
+    try:
+        queue = db.execute(select(AccountabilityMatchQueue).where(AccountabilityMatchQueue.status == QueueStatus.WAITING).order_by(AccountabilityMatchQueue.queued_at).with_for_update(skip_locked=True)).scalars().all()
+        if len(queue) < 15:
+            cutoff = datetime.utcnow().timestamp() - 7 * 86400
+            if len(queue) < 3 or queue[0].queued_at.timestamp() > cutoff: return 0
+        selected = queue[:15]
+        cluster = AccountabilityCluster(name=unique_name(db)); db.add(cluster); db.flush()
+        for item in selected:
+            db.add(AccountabilityClusterMembership(cluster_id=cluster.id,user_id=item.user_id)); item.status=QueueStatus.MATCHED; item.matched_cluster_id=cluster.id
+        db.commit(); return len(selected)
     finally:
         db.close()
